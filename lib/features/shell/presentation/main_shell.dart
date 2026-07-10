@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_locale_controller.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
-import 'package:watchloom/features/common/presentation/placeholder_page.dart';
+import 'package:watchloom/features/activity/presentation/pages/my_month_page.dart';
 import 'package:watchloom/features/home/presentation/home_page.dart';
 import 'package:watchloom/features/library/presentation/pages/library_page.dart';
 import 'package:watchloom/features/profile/presentation/profile_page.dart';
@@ -14,7 +14,9 @@ class MainShell extends StatefulWidget {
   final AppLocaleController localeController;
 
   @override
-  State<MainShell> createState() => _MainShellState();
+  State<MainShell> createState() {
+    return _MainShellState();
+  }
 }
 
 class _MainShellState extends State<MainShell> {
@@ -29,11 +31,7 @@ class _MainShellState extends State<MainShell> {
       HomePage(showRepository: scope.showRepository),
       const LibraryPage(),
       ShowSearchPage(showRepository: scope.showRepository),
-      PlaceholderPage(
-        title: strings.myMonth,
-        description: strings.monthDescription,
-        icon: Icons.calendar_month_rounded,
-      ),
+      const MyMonthPage(),
       ProfilePage(localeController: widget.localeController),
     ];
 
