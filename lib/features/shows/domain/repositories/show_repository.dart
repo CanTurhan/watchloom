@@ -21,4 +21,6 @@ abstract interface class ShowRepository {
   Future<TvShow> getShow(int showId);
 
   Future<List<TvEpisode>> getEpisodes(int showId);
+
+  Future<List<TvShow>> getShowsPage(int page);
 }

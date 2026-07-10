@@ -1,4 +1,5 @@
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:watchloom/features/recommendations/presentation/widgets/recommendation_section.dart';
 import 'package:flutter/material.dart';
 import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_activity_strings.dart';
@@ -278,6 +279,8 @@ class _HomePageState extends State<HomePage> {
                           },
                         ),
                       ),
+                    const SizedBox(height: 28),
+                    const RecommendationSection(),
                     const SizedBox(height: 28),
                     _SectionHeader(
                       title: strings.homeRecentActivityTitle,

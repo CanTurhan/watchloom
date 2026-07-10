@@ -50,6 +50,24 @@ class TvMazeRemoteDataSource {
         .toList(growable: false);
   }
 
+  Future<List<Map<String, dynamic>>> getShowsPage(int page) async {
+    if (page < 0) {
+      throw ArgumentError.value(page, 'page', 'Page cannot be negative.');
+    }
+
+    final response = await _get('/shows?page=$page');
+    final body = response.data;
+
+    if (body is! List) {
+      throw const FormatException('TVMaze show index response is not a list.');
+    }
+
+    return body
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList(growable: false);
+  }
+
   Future<Response<dynamic>> _get(
     String path, {
     Map<String, dynamic>? queryParameters,

@@ -64,6 +64,11 @@ class _FakeShowRepository implements ShowRepository {
   }
 
   @override
+  Future<List<TvShow>> getShowsPage(int page) async {
+    return const [];
+  }
+
+  @override
   Future<List<TvShow>> searchShows(String query) async {
     return const [];
   }

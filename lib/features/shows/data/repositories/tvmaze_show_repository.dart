@@ -66,6 +66,20 @@ class TvMazeShowRepository implements ShowRepository {
     }
   }
 
+  @override
+  Future<List<TvShow>> getShowsPage(int page) async {
+    try {
+      final response = await _remoteDataSource.getShowsPage(page);
+
+      return response
+          .map((item) => TvMazeMapper.showFromJson(item))
+          .whereType<TvShow>()
+          .toList(growable: false);
+    } catch (error) {
+      throw _mapFailure(error);
+    }
+  }
+
   ShowFailure _mapFailure(Object error) {
     if (error is ShowFailure) {
       return error;
