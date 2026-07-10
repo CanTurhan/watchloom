@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter_timezone/flutter_timezone.dart';
@@ -28,8 +30,13 @@ class UpcomingEpisodeNotificationService {
 
   static const String _channelId = 'watchloom_upcoming_episodes';
 
+  static const int _testNotificationId = 2999999;
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
+
+  final StreamController<int> _showOpenController =
+      StreamController<int>.broadcast();
 
   final Dio _dio = Dio(
     BaseOptions(
@@ -41,6 +48,17 @@ class UpcomingEpisodeNotificationService {
 
   bool _initialized = false;
   bool _syncing = false;
+  int? _pendingShowId;
+
+  Stream<int> get showOpenRequests {
+    return _showOpenController.stream;
+  }
+
+  int? takePendingShowId() {
+    final showId = _pendingShowId;
+    _pendingShowId = null;
+    return showId;
+  }
 
   Future<void> initialize() async {
     if (_initialized) {
@@ -66,9 +84,38 @@ class UpcomingEpisodeNotificationService {
       ),
     );
 
-    await _plugin.initialize(settings);
+    await _plugin.initialize(
+      settings,
+      onDidReceiveNotificationResponse: _handleNotificationResponse,
+    );
+
+    final launchDetails = await _plugin.getNotificationAppLaunchDetails();
+
+    if (launchDetails?.didNotificationLaunchApp == true) {
+      _pendingShowId = _parseShowId(
+        launchDetails?.notificationResponse?.payload,
+      );
+    }
 
     _initialized = true;
+  }
+
+  void _handleNotificationResponse(NotificationResponse response) {
+    final showId = _parseShowId(response.payload);
+
+    if (showId == null) {
+      return;
+    }
+
+    _showOpenController.add(showId);
+  }
+
+  int? _parseShowId(String? payload) {
+    if (payload == null || !payload.startsWith('show:')) {
+      return null;
+    }
+
+    return int.tryParse(payload.substring('show:'.length));
   }
 
   Future<bool> get isEnabled async {
@@ -125,6 +172,8 @@ class UpcomingEpisodeNotificationService {
       }
     }
 
+    await _plugin.cancel(_testNotificationId);
+
     await preferences.setBool(_enabledKey, false);
 
     await preferences.remove(_scheduledIdsKey);
@@ -139,6 +188,35 @@ class UpcomingEpisodeNotificationService {
     }
 
     return _sync(entries: entries, isTurkish: isTurkish);
+  }
+
+  Future<bool> showTestNotification({
+    required LibraryEntry entry,
+    required bool isTurkish,
+  }) async {
+    await initialize();
+
+    if (!await isEnabled) {
+      return false;
+    }
+
+    final title = isTurkish
+        ? 'Watchloom test bildirimi'
+        : 'Watchloom test notification';
+
+    final body = isTurkish
+        ? '${entry.name} detayını açmak için bildirime dokun.'
+        : 'Tap to open ${entry.name}.';
+
+    await _plugin.show(
+      _testNotificationId,
+      title,
+      body,
+      _notificationDetails(),
+      payload: 'show:${entry.showId}',
+    );
+
+    return true;
   }
 
   Future<bool> _requestPermission() async {
@@ -229,28 +307,12 @@ class UpcomingEpisodeNotificationService {
               ? 'S$season · B$episode bölümü yakında yayınlanacak.'
               : 'Season $season, episode $episode will be released soon.';
 
-          const notificationDetails = NotificationDetails(
-            android: AndroidNotificationDetails(
-              _channelId,
-              'Upcoming Episodes',
-              channelDescription: 'Reminders for upcoming television episodes',
-              importance: Importance.high,
-              priority: Priority.high,
-            ),
-            iOS: DarwinNotificationDetails(
-              threadIdentifier: 'watchloom_upcoming_episodes',
-              presentAlert: true,
-              presentBadge: true,
-              presentSound: true,
-            ),
-          );
-
           await _plugin.zonedSchedule(
             notificationId,
             title,
             body,
             tz.TZDateTime.from(notificationTime, tz.local),
-            notificationDetails,
+            _notificationDetails(),
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
             payload: 'show:${entry.showId}',
           );
@@ -269,6 +331,24 @@ class UpcomingEpisodeNotificationService {
     } finally {
       _syncing = false;
     }
+  }
+
+  NotificationDetails _notificationDetails() {
+    return const NotificationDetails(
+      android: AndroidNotificationDetails(
+        _channelId,
+        'Upcoming Episodes',
+        channelDescription: 'Reminders for upcoming television episodes',
+        importance: Importance.high,
+        priority: Priority.high,
+      ),
+      iOS: DarwinNotificationDetails(
+        threadIdentifier: 'watchloom_upcoming_episodes',
+        presentAlert: true,
+        presentBadge: true,
+        presentSound: true,
+      ),
+    );
   }
 
   Future<void> _cancelPreviouslyScheduled() async {

@@ -154,4 +154,17 @@ extension AppLibraryStrings on AppStrings {
       tr: '$count yaklaşan bölüm bildirimi planlandı.',
     );
   }
+
+  String get personalFeaturesRequireLibrary => value(
+    en: 'Add this show to your library to use favorites and personal notes.',
+    tr: 'Favorileri ve kişisel notları kullanmak için bu diziyi kütüphanene ekle.',
+  );
+
+  String get personalNoteRemoved =>
+      value(en: 'Personal note removed.', tr: 'Kişisel not kaldırıldı.');
+
+  String get removePersonalNote => value(en: 'Remove Note', tr: 'Notu Sil');
+
+  String get showInformation =>
+      value(en: 'Show Information', tr: 'Dizi Bilgileri');
 }

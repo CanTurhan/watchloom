@@ -60,4 +60,17 @@ extension AppNotificationStrings on AppStrings {
 
   String get openNotificationSettings =>
       value(en: 'Notifications', tr: 'Bildirimler');
+
+  String get sendTestNotification =>
+      value(en: 'Send Test Notification', tr: 'Test Bildirimi Gönder');
+
+  String get testNotificationSent => value(
+    en: 'Test notification sent. Tap it to open the show.',
+    tr: 'Test bildirimi gönderildi. Diziyi açmak için bildirime dokun.',
+  );
+
+  String get testNotificationUnavailable => value(
+    en: 'Add a show to your library before sending a test notification.',
+    tr: 'Test bildirimi göndermeden önce kütüphanene bir dizi ekle.',
+  );
 }

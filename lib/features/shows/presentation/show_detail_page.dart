@@ -10,6 +10,7 @@ import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
+import 'package:watchloom/features/shows/presentation/widgets/show_detail_personal_panel.dart';
 
 class ShowDetailPage extends StatefulWidget {
   const ShowDetailPage({
@@ -85,6 +86,12 @@ class _ShowDetailPageState extends State<ShowDetailPage> {
                   imageUrl: _show.imageOriginal ?? _show.imageMedium,
                 ),
               ),
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+              child: ShowDetailPersonalPanel(show: widget.initialShow),
             ),
           ),
           if (_isLoading)

@@ -4,6 +4,7 @@ import 'package:watchloom/core/localization/app_notification_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/notifications/upcoming_episode_notification_service.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 
 class NotificationSettingsPage extends StatefulWidget {
   const NotificationSettingsPage({super.key});
@@ -142,6 +143,62 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
       });
 
       _showMessage(strings.notificationsScheduledMessage(count));
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(strings.notificationSyncFailed);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _sendTestNotification() async {
+    if (_busy || !_enabled) {
+      return;
+    }
+
+    final strings = AppStrings.of(context);
+    final entries = AppScope.of(context).libraryController.entries.toList();
+
+    if (entries.isEmpty) {
+      _showMessage(strings.testNotificationUnavailable);
+      return;
+    }
+
+    LibraryEntry entry = entries.first;
+
+    for (final candidate in entries) {
+      if (candidate.status != LibraryStatus.completed &&
+          candidate.status != LibraryStatus.dropped) {
+        entry = candidate;
+        break;
+      }
+    }
+
+    setState(() {
+      _busy = true;
+    });
+
+    try {
+      final sent = await UpcomingEpisodeNotificationService.instance
+          .showTestNotification(
+            entry: entry,
+            isTurkish: Localizations.localeOf(context).languageCode == 'tr',
+          );
+
+      if (!mounted) {
+        return;
+      }
+
+      _showMessage(
+        sent ? strings.testNotificationSent : strings.notificationSyncFailed,
+      );
     } catch (_) {
       if (!mounted) {
         return;
@@ -327,6 +384,12 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                         )
                       : const Icon(Icons.refresh_rounded),
                   label: Text(strings.refreshNotificationSchedule),
+                ),
+                const SizedBox(height: 10),
+                OutlinedButton.icon(
+                  onPressed: !_enabled || _busy ? null : _sendTestNotification,
+                  icon: const Icon(Icons.notification_add_outlined),
+                  label: Text(strings.sendTestNotification),
                 ),
                 const SizedBox(height: 22),
                 Text(

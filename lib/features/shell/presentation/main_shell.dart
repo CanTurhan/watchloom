@@ -10,9 +10,11 @@ import 'package:watchloom/core/notifications/upcoming_episode_notification_servi
 import 'package:watchloom/features/activity/presentation/pages/my_month_page.dart';
 import 'package:watchloom/features/activity/presentation/services/month_story_service.dart';
 import 'package:watchloom/features/home/presentation/home_page.dart';
+import 'package:watchloom/features/library/presentation/controllers/library_controller.dart';
 import 'package:watchloom/features/library/presentation/pages/library_page.dart';
 import 'package:watchloom/features/profile/presentation/profile_page.dart';
 import 'package:watchloom/features/settings/presentation/pages/notification_settings_page.dart';
+import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
 import 'package:watchloom/features/shows/presentation/show_search_page.dart';
 
 class MainShell extends StatefulWidget {
@@ -29,15 +31,26 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> {
   final MonthStoryService _monthStoryService = MonthStoryService();
 
+  StreamSubscription<int>? _notificationTapSubscription;
+
+  LibraryController? _observedLibraryController;
+  Timer? _notificationSyncTimer;
+
   int _selectedIndex = 0;
   bool _isSharingStory = false;
   bool _notificationBootstrapStarted = false;
+  bool _openingNotificationShow = false;
 
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
 
+    final scope = AppScope.of(context);
+
+    _observeLibrary(scope.libraryController);
+
     if (_notificationBootstrapStarted) {
+      _scheduleNotificationSync();
       return;
     }
 
@@ -48,15 +61,146 @@ class _MainShellState extends State<MainShell> {
         return;
       }
 
+      unawaited(_initializeNotificationIntegration());
+    });
+  }
+
+  void _observeLibrary(LibraryController controller) {
+    if (identical(controller, _observedLibraryController)) {
+      return;
+    }
+
+    _observedLibraryController?.removeListener(_handleLibraryChanged);
+
+    _observedLibraryController = controller;
+
+    controller.addListener(_handleLibraryChanged);
+  }
+
+  void _handleLibraryChanged() {
+    final controller = _observedLibraryController;
+
+    if (!mounted || controller == null || controller.isLoading) {
+      return;
+    }
+
+    _scheduleNotificationSync();
+  }
+
+  void _scheduleNotificationSync() {
+    _notificationSyncTimer?.cancel();
+
+    _notificationSyncTimer = Timer(const Duration(milliseconds: 700), () {
+      if (!mounted) {
+        return;
+      }
+
+      unawaited(_syncNotificationsSilently());
+    });
+  }
+
+  Future<void> _initializeNotificationIntegration() async {
+    final service = UpcomingEpisodeNotificationService.instance;
+
+    await service.initialize();
+
+    if (!mounted) {
+      return;
+    }
+
+    _notificationTapSubscription ??= service.showOpenRequests.listen(
+      _queueNotificationShowOpen,
+    );
+
+    final pendingShowId = service.takePendingShowId();
+
+    if (pendingShowId != null) {
+      _queueNotificationShowOpen(pendingShowId);
+    }
+
+    await _syncNotificationsSilently();
+  }
+
+  Future<void> _syncNotificationsSilently() async {
+    if (!mounted) {
+      return;
+    }
+
+    final scope = AppScope.of(context);
+
+    try {
+      await UpcomingEpisodeNotificationService.instance.syncIfEnabled(
+        entries: scope.libraryController.entries.toList(),
+        isTurkish: Localizations.localeOf(context).languageCode == 'tr',
+      );
+    } catch (_) {
+      // Arka plan eşitleme hataları kullanıcı
+      // deneyimini kesintiye uğratmaz.
+    }
+  }
+
+  void _queueNotificationShowOpen(int showId) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      unawaited(_openShowFromNotification(showId));
+    });
+  }
+
+  Future<void> _openShowFromNotification(int showId) async {
+    if (_openingNotificationShow || !mounted) {
+      return;
+    }
+
+    _openingNotificationShow = true;
+
+    try {
       final scope = AppScope.of(context);
 
-      unawaited(
-        UpcomingEpisodeNotificationService.instance.syncIfEnabled(
-          entries: scope.libraryController.entries.toList(),
-          isTurkish: Localizations.localeOf(context).languageCode == 'tr',
+      var entry = scope.libraryController.findByShowId(showId);
+
+      if (entry == null) {
+        await scope.libraryController.load();
+
+        if (!mounted) {
+          return;
+        }
+
+        entry = scope.libraryController.findByShowId(showId);
+      }
+
+      if (entry == null || !mounted) {
+        return;
+      }
+
+      await Navigator.of(context).push(
+        MaterialPageRoute<void>(
+          builder: (_) => ShowDetailPage(
+            showRepository: scope.showRepository,
+            initialShow: entry!.toTvShow(),
+          ),
         ),
       );
-    });
+    } finally {
+      _openingNotificationShow = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _notificationSyncTimer?.cancel();
+
+    _observedLibraryController?.removeListener(_handleLibraryChanged);
+
+    final subscription = _notificationTapSubscription;
+
+    if (subscription != null) {
+      unawaited(subscription.cancel());
+    }
+
+    super.dispose();
   }
 
   Future<void> _shareMonthStory() async {
