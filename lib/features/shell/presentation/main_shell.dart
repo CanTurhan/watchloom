@@ -1,13 +1,18 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_locale_controller.dart';
+import 'package:watchloom/core/localization/app_notification_strings.dart';
 import 'package:watchloom/core/localization/app_story_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
+import 'package:watchloom/core/notifications/upcoming_episode_notification_service.dart';
 import 'package:watchloom/features/activity/presentation/pages/my_month_page.dart';
 import 'package:watchloom/features/activity/presentation/services/month_story_service.dart';
 import 'package:watchloom/features/home/presentation/home_page.dart';
 import 'package:watchloom/features/library/presentation/pages/library_page.dart';
 import 'package:watchloom/features/profile/presentation/profile_page.dart';
+import 'package:watchloom/features/settings/presentation/pages/notification_settings_page.dart';
 import 'package:watchloom/features/shows/presentation/show_search_page.dart';
 
 class MainShell extends StatefulWidget {
@@ -26,6 +31,33 @@ class _MainShellState extends State<MainShell> {
 
   int _selectedIndex = 0;
   bool _isSharingStory = false;
+  bool _notificationBootstrapStarted = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+
+    if (_notificationBootstrapStarted) {
+      return;
+    }
+
+    _notificationBootstrapStarted = true;
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+
+      final scope = AppScope.of(context);
+
+      unawaited(
+        UpcomingEpisodeNotificationService.instance.syncIfEnabled(
+          entries: scope.libraryController.entries.toList(),
+          isTurkish: Localizations.localeOf(context).languageCode == 'tr',
+        ),
+      );
+    });
+  }
 
   Future<void> _shareMonthStory() async {
     if (_isSharingStory) {
@@ -70,6 +102,40 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
+  void _openNotificationSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => const NotificationSettingsPage()),
+    );
+  }
+
+  Widget? _buildFloatingActionButton(AppStrings strings) {
+    if (_selectedIndex == 3) {
+      return FloatingActionButton.extended(
+        heroTag: 'month-story-share',
+        onPressed: _isSharingStory ? null : _shareMonthStory,
+        icon: _isSharingStory
+            ? const SizedBox(
+                width: 19,
+                height: 19,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            : const Icon(Icons.ios_share_rounded),
+        label: Text(strings.shareMonthStory),
+      );
+    }
+
+    if (_selectedIndex == 4) {
+      return FloatingActionButton.extended(
+        heroTag: 'notification-settings',
+        onPressed: _openNotificationSettings,
+        icon: const Icon(Icons.notifications_rounded),
+        label: Text(strings.openNotificationSettings),
+      );
+    }
+
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.of(context);
@@ -85,20 +151,7 @@ class _MainShellState extends State<MainShell> {
 
     return Scaffold(
       body: IndexedStack(index: _selectedIndex, children: pages),
-      floatingActionButton: _selectedIndex == 3
-          ? FloatingActionButton.extended(
-              heroTag: 'month-story-share',
-              onPressed: _isSharingStory ? null : _shareMonthStory,
-              icon: _isSharingStory
-                  ? const SizedBox(
-                      width: 19,
-                      height: 19,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.ios_share_rounded),
-              label: Text(strings.shareMonthStory),
-            )
-          : null,
+      floatingActionButton: _buildFloatingActionButton(strings),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedIndex,
         onDestinationSelected: (index) {

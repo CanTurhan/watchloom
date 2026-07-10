@@ -26,21 +26,23 @@ class UpcomingEpisodeNotificationService {
 
   static const String _scheduledIdsKey = 'upcoming_episode_notification_ids';
 
+  static const String _channelId = 'watchloom_upcoming_episodes';
+
   final FlutterLocalNotificationsPlugin _plugin =
       FlutterLocalNotificationsPlugin();
 
   final Dio _dio = Dio(
     BaseOptions(
       baseUrl: 'https://api.tvmaze.com',
-      connectTimeout: const Duration(seconds: 8),
-      receiveTimeout: const Duration(seconds: 8),
+      connectTimeout: const Duration(seconds: 10),
+      receiveTimeout: const Duration(seconds: 10),
     ),
   );
 
   bool _initialized = false;
   bool _syncing = false;
 
-  Future<void> _ensureInitialized() async {
+  Future<void> initialize() async {
     if (_initialized) {
       return;
     }
@@ -55,7 +57,7 @@ class UpcomingEpisodeNotificationService {
       tz.setLocalLocation(tz.UTC);
     }
 
-    const initializationSettings = InitializationSettings(
+    const settings = InitializationSettings(
       android: AndroidInitializationSettings('@mipmap/ic_launcher'),
       iOS: DarwinInitializationSettings(
         requestAlertPermission: false,
@@ -64,7 +66,7 @@ class UpcomingEpisodeNotificationService {
       ),
     );
 
-    await _plugin.initialize(initializationSettings);
+    await _plugin.initialize(settings);
 
     _initialized = true;
   }
@@ -75,40 +77,19 @@ class UpcomingEpisodeNotificationService {
     return preferences.getBool(_enabledKey) ?? false;
   }
 
+  Future<int> get scheduledCount async {
+    final preferences = await SharedPreferences.getInstance();
+
+    return preferences.getStringList(_scheduledIdsKey)?.length ?? 0;
+  }
+
   Future<NotificationSyncResult> enableAndSync({
     required List<LibraryEntry> entries,
     required bool isTurkish,
   }) async {
-    await _ensureInitialized();
+    await initialize();
 
-    var permissionGranted = true;
-
-    final iosPlugin = _plugin
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >();
-
-    final iosPermission = await iosPlugin?.requestPermissions(
-      alert: true,
-      badge: true,
-      sound: true,
-    );
-
-    if (iosPermission == false) {
-      permissionGranted = false;
-    }
-
-    final androidPlugin = _plugin
-        .resolvePlatformSpecificImplementation<
-          AndroidFlutterLocalNotificationsPlugin
-        >();
-
-    final androidPermission = await androidPlugin
-        ?.requestNotificationsPermission();
-
-    if (androidPermission == false) {
-      permissionGranted = false;
-    }
+    final permissionGranted = await _requestPermission();
 
     final preferences = await SharedPreferences.getInstance();
 
@@ -130,7 +111,7 @@ class UpcomingEpisodeNotificationService {
   }
 
   Future<void> disable() async {
-    await _ensureInitialized();
+    await initialize();
 
     final preferences = await SharedPreferences.getInstance();
 
@@ -160,31 +141,52 @@ class UpcomingEpisodeNotificationService {
     return _sync(entries: entries, isTurkish: isTurkish);
   }
 
+  Future<bool> _requestPermission() async {
+    var granted = true;
+
+    final iosPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          IOSFlutterLocalNotificationsPlugin
+        >();
+
+    final iosResult = await iosPlugin?.requestPermissions(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    if (iosResult == false) {
+      granted = false;
+    }
+
+    final androidPlugin = _plugin
+        .resolvePlatformSpecificImplementation<
+          AndroidFlutterLocalNotificationsPlugin
+        >();
+
+    final androidResult = await androidPlugin?.requestNotificationsPermission();
+
+    if (androidResult == false) {
+      granted = false;
+    }
+
+    return granted;
+  }
+
   Future<int> _sync({
     required List<LibraryEntry> entries,
     required bool isTurkish,
   }) async {
     if (_syncing) {
-      return 0;
+      return scheduledCount;
     }
 
     _syncing = true;
 
     try {
-      await _ensureInitialized();
+      await initialize();
 
-      final preferences = await SharedPreferences.getInstance();
-
-      final oldIds =
-          preferences.getStringList(_scheduledIdsKey) ?? const <String>[];
-
-      for (final value in oldIds) {
-        final id = int.tryParse(value);
-
-        if (id != null) {
-          await _plugin.cancel(id);
-        }
-      }
+      await _cancelPreviouslyScheduled();
 
       final eligibleEntries = entries
           .where(
@@ -199,52 +201,47 @@ class UpcomingEpisodeNotificationService {
 
       for (final entry in eligibleEntries) {
         try {
-          final episode = await _loadNextEpisode(entry.showId);
+          final nextEpisode = await _loadNextEpisode(entry.showId);
 
-          if (episode == null) {
+          if (nextEpisode == null) {
             continue;
           }
 
-          final now = DateTime.now();
-
-          var notificationTime = episode.airDateTime.subtract(
-            const Duration(days: 1),
+          final notificationTime = _calculateNotificationTime(
+            nextEpisode.airDateTime,
           );
 
-          if (!notificationTime.isAfter(now)) {
-            notificationTime = episode.airDateTime.subtract(
-              const Duration(hours: 1),
-            );
-          }
-
-          if (!notificationTime.isAfter(now.add(const Duration(minutes: 1)))) {
+          if (notificationTime == null) {
             continue;
           }
 
-          final notificationId = 1000000 + entry.showId;
+          final notificationId = 2000000 + entry.showId;
 
-          final seasonText = episode.season.toString().padLeft(2, '0');
+          final season = nextEpisode.season.toString().padLeft(2, '0');
 
-          final episodeText = episode.episode.toString().padLeft(2, '0');
+          final episode = nextEpisode.episode.toString().padLeft(2, '0');
 
           final title = isTurkish
               ? '${entry.name} yakında yayınlanıyor'
               : '${entry.name} is coming soon';
 
           final body = isTurkish
-              ? 'S$seasonText · B$episodeText yaklaşan bölümünü unutma.'
-              : 'Do not miss the upcoming S$seasonText · E$episodeText.';
+              ? 'S$season · B$episode bölümü yakında yayınlanacak.'
+              : 'Season $season, episode $episode will be released soon.';
 
-          const details = NotificationDetails(
+          const notificationDetails = NotificationDetails(
             android: AndroidNotificationDetails(
-              'upcoming_episodes',
+              _channelId,
               'Upcoming Episodes',
-              channelDescription: 'Notifications for upcoming TV episodes',
+              channelDescription: 'Reminders for upcoming television episodes',
               importance: Importance.high,
               priority: Priority.high,
             ),
             iOS: DarwinNotificationDetails(
-              threadIdentifier: 'upcoming_episodes',
+              threadIdentifier: 'watchloom_upcoming_episodes',
+              presentAlert: true,
+              presentBadge: true,
+              presentSound: true,
             ),
           );
 
@@ -253,7 +250,7 @@ class UpcomingEpisodeNotificationService {
             title,
             body,
             tz.TZDateTime.from(notificationTime, tz.local),
-            details,
+            notificationDetails,
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
             payload: 'show:${entry.showId}',
           );
@@ -264,6 +261,8 @@ class UpcomingEpisodeNotificationService {
         }
       }
 
+      final preferences = await SharedPreferences.getInstance();
+
       await preferences.setStringList(_scheduledIdsKey, scheduledIds);
 
       return scheduledIds.length;
@@ -272,16 +271,53 @@ class UpcomingEpisodeNotificationService {
     }
   }
 
-  Future<_NextEpisode?> _loadNextEpisode(int showId) async {
-    final response = await _dio.get<List<dynamic>>('/shows/$showId/episodes');
+  Future<void> _cancelPreviouslyScheduled() async {
+    final preferences = await SharedPreferences.getInstance();
 
-    final episodes = response.data ?? const <dynamic>[];
+    final oldIds =
+        preferences.getStringList(_scheduledIdsKey) ?? const <String>[];
+
+    for (final value in oldIds) {
+      final id = int.tryParse(value);
+
+      if (id != null) {
+        await _plugin.cancel(id);
+      }
+    }
+
+    await preferences.remove(_scheduledIdsKey);
+  }
+
+  DateTime? _calculateNotificationTime(DateTime episodeDate) {
+    final now = DateTime.now();
+
+    var notificationTime = episodeDate.subtract(const Duration(days: 1));
+
+    if (!notificationTime.isAfter(now)) {
+      notificationTime = episodeDate.subtract(const Duration(hours: 1));
+    }
+
+    if (!notificationTime.isAfter(now.add(const Duration(minutes: 2)))) {
+      return null;
+    }
+
+    return notificationTime;
+  }
+
+  Future<_NextEpisode?> _loadNextEpisode(int showId) async {
+    final response = await _dio.get<dynamic>('/shows/$showId/episodes');
+
+    final data = response.data;
+
+    if (data is! List) {
+      return null;
+    }
 
     final now = DateTime.now();
 
     _NextEpisode? nearest;
 
-    for (final rawEpisode in episodes) {
+    for (final rawEpisode in data) {
       if (rawEpisode is! Map) {
         continue;
       }
@@ -320,7 +356,7 @@ class UpcomingEpisodeNotificationService {
   DateTime? _parseAirDateTime(Map<String, dynamic> episode) {
     final airStamp = episode['airstamp']?.toString();
 
-    if (airStamp != null && airStamp.isNotEmpty) {
+    if (airStamp != null && airStamp.trim().isNotEmpty) {
       final parsed = DateTime.tryParse(airStamp);
 
       if (parsed != null) {
