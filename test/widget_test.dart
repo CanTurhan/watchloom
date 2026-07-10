@@ -142,6 +142,41 @@ class _FakeActivityRepository implements ActivityRepository {
   }
 
   @override
+  Future<EpisodeWatchLog?> undoLatestEpisode({
+    required LibraryEntry currentLibraryEntry,
+  }) async {
+    if (_logs.isEmpty) {
+      return null;
+    }
+
+    final latestLog = _logs.first;
+    _logs.removeAt(0);
+
+    await _libraryRepository.saveEntry(
+      LibraryEntry(
+        showId: currentLibraryEntry.showId,
+        name: currentLibraryEntry.name,
+        summary: currentLibraryEntry.summary,
+        genres: currentLibraryEntry.genres,
+        status: latestLog.previousStatus ?? currentLibraryEntry.status,
+        imageMedium: currentLibraryEntry.imageMedium,
+        imageOriginal: currentLibraryEntry.imageOriginal,
+        ratingAverage: currentLibraryEntry.ratingAverage,
+        channelName: currentLibraryEntry.channelName,
+        premiered: currentLibraryEntry.premiered,
+        tvMazeUrl: currentLibraryEntry.tvMazeUrl,
+        lastSeason: latestLog.previousSeason,
+        lastEpisode: latestLog.previousEpisodeNumber,
+        lastEpisodeId: latestLog.previousEpisodeId,
+        addedAt: currentLibraryEntry.addedAt,
+        updatedAt: DateTime.now(),
+      ),
+    );
+
+    return latestLog;
+  }
+
+  @override
   Future<bool> unlockAchievement(UnlockedAchievement achievement) async {
     final alreadyExists = _achievements.any(
       (currentAchievement) => currentAchievement.code == achievement.code,

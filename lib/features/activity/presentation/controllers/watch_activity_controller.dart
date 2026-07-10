@@ -16,11 +16,25 @@ enum MarkNextEpisodeStatus {
   failed,
 }
 
+enum UndoLatestEpisodeStatus {
+  success,
+  nothingToUndo,
+  libraryEntryMissing,
+  failed,
+}
+
 class MarkNextEpisodeResult {
   const MarkNextEpisodeResult({required this.status, this.episode});
 
   final MarkNextEpisodeStatus status;
   final TvEpisode? episode;
+}
+
+class UndoLatestEpisodeResult {
+  const UndoLatestEpisodeResult({required this.status, this.log});
+
+  final UndoLatestEpisodeStatus status;
+  final EpisodeWatchLog? log;
 }
 
 class WatchActivityController extends ChangeNotifier {
@@ -52,6 +66,7 @@ class WatchActivityController extends ChangeNotifier {
   final Set<int> _processingShowIds = {};
 
   bool _isLoading = false;
+  bool _isUndoing = false;
   Object? _error;
 
   UnmodifiableListView<EpisodeWatchLog> get logs {
@@ -63,9 +78,18 @@ class WatchActivityController extends ChangeNotifier {
   }
 
   bool get isLoading => _isLoading;
+  bool get isUndoing => _isUndoing;
   Object? get error => _error;
 
   int get totalEpisodes => _logs.length;
+
+  bool get canUndoLatest {
+    if (_logs.isEmpty || _isUndoing) {
+      return false;
+    }
+
+    return _libraryController.findByShowId(_logs.first.showId) != null;
+  }
 
   int get monthEpisodeCount {
     return logsForMonth(DateTime.now()).length;
@@ -130,6 +154,7 @@ class WatchActivityController extends ChangeNotifier {
 
     try {
       _logs = await _repository.getWatchLogs();
+
       _unlockedAchievements = await _repository.getUnlockedAchievements();
 
       final unlockedNew = await _unlockEligibleAchievements();
@@ -200,6 +225,10 @@ class WatchActivityController extends ChangeNotifier {
           runtimeMinutes: nextEpisode.runtime,
           watchedAt: now,
           source: WatchLogSource.manualWatch,
+          previousStatus: entry.status,
+          previousSeason: entry.lastSeason,
+          previousEpisodeNumber: entry.lastEpisode,
+          previousEpisodeId: entry.lastEpisodeId,
         ),
         updatedLibraryEntry: updatedEntry,
       );
@@ -222,6 +251,60 @@ class WatchActivityController extends ChangeNotifier {
       return const MarkNextEpisodeResult(status: MarkNextEpisodeStatus.failed);
     } finally {
       _processingShowIds.remove(entry.showId);
+      notifyListeners();
+    }
+  }
+
+  Future<UndoLatestEpisodeResult> undoLastEpisode() async {
+    if (_isUndoing) {
+      return const UndoLatestEpisodeResult(
+        status: UndoLatestEpisodeStatus.failed,
+      );
+    }
+
+    if (_logs.isEmpty) {
+      return const UndoLatestEpisodeResult(
+        status: UndoLatestEpisodeStatus.nothingToUndo,
+      );
+    }
+
+    final latestLog = _logs.first;
+
+    final currentEntry = _libraryController.findByShowId(latestLog.showId);
+
+    if (currentEntry == null) {
+      return const UndoLatestEpisodeResult(
+        status: UndoLatestEpisodeStatus.libraryEntryMissing,
+      );
+    }
+
+    _isUndoing = true;
+    notifyListeners();
+
+    try {
+      final removedLog = await _repository.undoLatestEpisode(
+        currentLibraryEntry: currentEntry,
+      );
+
+      if (removedLog == null) {
+        return const UndoLatestEpisodeResult(
+          status: UndoLatestEpisodeStatus.nothingToUndo,
+        );
+      }
+
+      await _libraryController.load();
+      await load();
+
+      return UndoLatestEpisodeResult(
+        status: UndoLatestEpisodeStatus.success,
+        log: removedLog,
+      );
+    } catch (_) {
+      return const UndoLatestEpisodeResult(
+        status: UndoLatestEpisodeStatus.failed,
+      );
+    } finally {
+      _isUndoing = false;
       notifyListeners();
     }
   }
@@ -319,9 +402,11 @@ class WatchActivityController extends ChangeNotifier {
     }
 
     final now = DateTime.now();
+
     final today = DateTime(now.year, now.month, now.day);
 
     final latest = days.last;
+
     final daysSinceLatest = today.difference(latest).inDays;
 
     if (daysSinceLatest > 1) {
@@ -386,6 +471,7 @@ class WatchActivityController extends ChangeNotifier {
     }
 
     final now = DateTime.now();
+
     final currentMonth = now.year * 12 + now.month;
 
     final latestMonth = months.last;

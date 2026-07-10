@@ -16,7 +16,7 @@ class WatchloomDatabase {
 
     final openedDatabase = await openDatabase(
       databasePath,
-      version: 2,
+      version: 3,
       onConfigure: (database) async {
         await database.execute('PRAGMA foreign_keys = ON');
       },
@@ -27,6 +27,10 @@ class WatchloomDatabase {
       onUpgrade: (database, oldVersion, newVersion) async {
         if (oldVersion < 2) {
           await _createActivityTables(database);
+        }
+
+        if (oldVersion < 3) {
+          await _ensureWatchHistoryColumns(database);
         }
       },
     );
@@ -80,6 +84,10 @@ class WatchloomDatabase {
         runtime_minutes INTEGER,
         watched_at TEXT NOT NULL,
         source TEXT NOT NULL DEFAULT 'manual_watch',
+        previous_status TEXT,
+        previous_season INTEGER,
+        previous_episode_number INTEGER,
+        previous_episode_id INTEGER,
         UNIQUE(show_id, episode_id)
       )
     ''');
@@ -100,5 +108,44 @@ class WatchloomDatabase {
         unlocked_at TEXT NOT NULL
       )
     ''');
+  }
+
+  Future<void> _ensureWatchHistoryColumns(Database database) async {
+    final columns = await database.rawQuery(
+      'PRAGMA table_info(episode_watch_logs)',
+    );
+
+    final columnNames = columns
+        .map((column) => column['name']?.toString())
+        .whereType<String>()
+        .toSet();
+
+    if (!columnNames.contains('previous_status')) {
+      await database.execute(
+        'ALTER TABLE episode_watch_logs '
+        'ADD COLUMN previous_status TEXT',
+      );
+    }
+
+    if (!columnNames.contains('previous_season')) {
+      await database.execute(
+        'ALTER TABLE episode_watch_logs '
+        'ADD COLUMN previous_season INTEGER',
+      );
+    }
+
+    if (!columnNames.contains('previous_episode_number')) {
+      await database.execute(
+        'ALTER TABLE episode_watch_logs '
+        'ADD COLUMN previous_episode_number INTEGER',
+      );
+    }
+
+    if (!columnNames.contains('previous_episode_id')) {
+      await database.execute(
+        'ALTER TABLE episode_watch_logs '
+        'ADD COLUMN previous_episode_id INTEGER',
+      );
+    }
   }
 }

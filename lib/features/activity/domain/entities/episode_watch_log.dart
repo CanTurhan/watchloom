@@ -1,3 +1,5 @@
+import 'package:watchloom/features/library/domain/entities/library_entry.dart';
+
 enum WatchLogSource { manualWatch }
 
 extension WatchLogSourceCode on WatchLogSource {
@@ -28,6 +30,10 @@ class EpisodeWatchLog {
     required this.source,
     this.id,
     this.runtimeMinutes,
+    this.previousStatus,
+    this.previousSeason,
+    this.previousEpisodeNumber,
+    this.previousEpisodeId,
   });
 
   final int? id;
@@ -39,6 +45,11 @@ class EpisodeWatchLog {
   final int? runtimeMinutes;
   final DateTime watchedAt;
   final WatchLogSource source;
+
+  final LibraryStatus? previousStatus;
+  final int? previousSeason;
+  final int? previousEpisodeNumber;
+  final int? previousEpisodeId;
 
   String get episodeCode {
     final seasonText = season.toString().padLeft(2, '0');
@@ -58,10 +69,16 @@ class EpisodeWatchLog {
       'runtime_minutes': runtimeMinutes,
       'watched_at': watchedAt.toUtc().toIso8601String(),
       'source': source.code,
+      'previous_status': previousStatus?.code,
+      'previous_season': previousSeason,
+      'previous_episode_number': previousEpisodeNumber,
+      'previous_episode_id': previousEpisodeId,
     };
   }
 
   factory EpisodeWatchLog.fromMap(Map<String, Object?> map) {
+    final previousStatusCode = map['previous_status'] as String?;
+
     return EpisodeWatchLog(
       id: map['id'] as int?,
       showId: map['show_id'] as int,
@@ -72,6 +89,12 @@ class EpisodeWatchLog {
       runtimeMinutes: map['runtime_minutes'] as int?,
       watchedAt: DateTime.parse(map['watched_at'] as String),
       source: WatchLogSourceCode.fromCode(map['source'] as String?),
+      previousStatus: previousStatusCode == null
+          ? null
+          : LibraryStatusCode.fromCode(previousStatusCode),
+      previousSeason: map['previous_season'] as int?,
+      previousEpisodeNumber: map['previous_episode_number'] as int?,
+      previousEpisodeId: map['previous_episode_id'] as int?,
     );
   }
 }

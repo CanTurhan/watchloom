@@ -28,7 +28,7 @@ class _MainShellState extends State<MainShell> {
     final scope = AppScope.of(context);
 
     final pages = <Widget>[
-      HomePage(showRepository: scope.showRepository),
+      const HomePage(),
       const LibraryPage(),
       ShowSearchPage(showRepository: scope.showRepository),
       const MyMonthPage(),

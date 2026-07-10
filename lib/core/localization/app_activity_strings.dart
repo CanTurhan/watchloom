@@ -207,4 +207,83 @@ extension AppActivityStrings on AppStrings {
         return '';
     }
   }
+
+  String get undoAction => value(en: 'Undo', tr: 'Geri Al');
+
+  String get undoLastWatchAction =>
+      value(en: 'Undo last watch', tr: 'Son izlemeyi geri al');
+
+  String get nothingToUndoMessage => value(
+    en: 'There is no watch record to undo.',
+    tr: 'Geri alınabilecek izleme kaydı bulunmuyor.',
+  );
+
+  String get undoLibraryMissingMessage => value(
+    en: 'The show must be in your library before this record can be undone.',
+    tr: 'Bu kaydı geri almak için dizi kütüphanende bulunmalı.',
+  );
+
+  String get undoFailedMessage => value(
+    en: 'The watch record could not be undone.',
+    tr: 'İzleme kaydı geri alınamadı.',
+  );
+
+  String watchUndoneMessage(String showName, int season, int episode) {
+    final seasonText = season.toString().padLeft(2, '0');
+    final episodeText = episode.toString().padLeft(2, '0');
+
+    return value(
+      en: '$showName S$seasonText · E$episodeText was undone.',
+      tr: '$showName S$seasonText · B$episodeText geri alındı.',
+    );
+  }
+
+  String get homeNoActiveShowTitle =>
+      value(en: 'Nothing in progress', tr: 'Devam eden dizi yok');
+
+  String get homeNoActiveShowDescription => value(
+    en: 'Add a show to your library and start tracking episodes.',
+    tr: 'Kütüphanene bir dizi ekleyerek bölümleri takip etmeye başla.',
+  );
+
+  String get homeWatchlistTitle =>
+      value(en: 'Your Watchlist', tr: 'İzleme Listen');
+
+  String get homeRecentActivityTitle =>
+      value(en: 'Recent Activity', tr: 'Son Etkinlikler');
+
+  String get homeNoRecentActivity => value(
+    en: 'Episodes you mark as watched will appear here.',
+    tr: 'İzlendi olarak işaretlediğin bölümler burada görünecek.',
+  );
+
+  String get homeMonthlySummaryTitle => value(en: 'This Month', tr: 'Bu Ay');
+
+  String get openDiscoverAction => value(en: 'Find a Show', tr: 'Dizi Bul');
+
+  String get viewDetailsAction => value(en: 'View details', tr: 'Detayları aç');
+
+  String get upcomingEpisodesTitle =>
+      value(en: 'Upcoming Episodes', tr: 'Yaklaşan Bölümler');
+
+  String get noUpcomingEpisodesTitle =>
+      value(en: 'No announced episodes', tr: 'Açıklanmış bölüm yok');
+
+  String get noUpcomingEpisodesDescription => value(
+    en: 'Episodes with an official release date will appear here.',
+    tr: 'Resmî yayın tarihi açıklanan bölümler burada görünecek.',
+  );
+
+  String get upcomingLoadFailed => value(
+    en: 'Upcoming episodes could not be loaded.',
+    tr: 'Yaklaşan bölümler yüklenemedi.',
+  );
+
+  String get todayLabel => value(en: 'Today', tr: 'Bugün');
+
+  String get tomorrowLabel => value(en: 'Tomorrow', tr: 'Yarın');
+
+  String daysRemainingLabel(int days) {
+    return value(en: 'In $days days', tr: '$days gün sonra');
+  }
 }

@@ -268,6 +268,57 @@ class _LibraryPageState extends State<LibraryPage> {
         message = strings.episodeLogFailedMessage;
     }
 
+    final succeeded = result.status == MarkNextEpisodeStatus.success;
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        action: succeeded
+            ? SnackBarAction(
+                label: strings.undoAction,
+                onPressed: () {
+                  _undoLastEpisode(context, strings);
+                },
+              )
+            : null,
+      ),
+    );
+  }
+
+  Future<void> _undoLastEpisode(
+    BuildContext context,
+    AppStrings strings,
+  ) async {
+    final result = await AppScope.of(
+      context,
+    ).activityController.undoLastEpisode();
+
+    if (!context.mounted) {
+      return;
+    }
+
+    late final String message;
+
+    switch (result.status) {
+      case UndoLatestEpisodeStatus.success:
+        final log = result.log!;
+
+        message = strings.watchUndoneMessage(
+          log.showName,
+          log.season,
+          log.episodeNumber,
+        );
+
+      case UndoLatestEpisodeStatus.nothingToUndo:
+        message = strings.nothingToUndoMessage;
+
+      case UndoLatestEpisodeStatus.libraryEntryMissing:
+        message = strings.undoLibraryMissingMessage;
+
+      case UndoLatestEpisodeStatus.failed:
+        message = strings.undoFailedMessage;
+    }
+
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text(message)));

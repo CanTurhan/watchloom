@@ -12,5 +12,9 @@ abstract interface class ActivityRepository {
     required LibraryEntry updatedLibraryEntry,
   });
 
+  Future<EpisodeWatchLog?> undoLatestEpisode({
+    required LibraryEntry currentLibraryEntry,
+  });
+
   Future<bool> unlockAchievement(UnlockedAchievement achievement);
 }

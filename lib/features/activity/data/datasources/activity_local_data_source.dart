@@ -9,7 +9,12 @@ class ActivityLocalDataSource {
   Future<List<Map<String, Object?>>> getWatchLogs() async {
     final database = await _watchloomDatabase.database;
 
-    return database.query('episode_watch_logs', orderBy: 'watched_at DESC');
+    return database.query(
+      'episode_watch_logs',
+      where: 'source = ?',
+      whereArgs: ['manual_watch'],
+      orderBy: 'watched_at DESC, id DESC',
+    );
   }
 
   Future<List<Map<String, Object?>>> getUnlockedAchievements() async {
@@ -50,6 +55,77 @@ class ActivityLocalDataSource {
       );
 
       return true;
+    });
+  }
+
+  Future<Map<String, Object?>?> undoLatestEpisode({
+    required Map<String, Object?> currentLibraryEntry,
+  }) async {
+    final database = await _watchloomDatabase.database;
+
+    return database.transaction((transaction) async {
+      final showId = currentLibraryEntry['show_id'];
+
+      final logs = await transaction.query(
+        'episode_watch_logs',
+        where: 'show_id = ? AND source = ?',
+        whereArgs: [showId, 'manual_watch'],
+        orderBy: 'watched_at DESC, id DESC',
+        limit: 2,
+      );
+
+      if (logs.isEmpty) {
+        return null;
+      }
+
+      final latest = Map<String, Object?>.from(logs.first);
+
+      final hasStoredPreviousState = latest['previous_status'] != null;
+
+      String restoredStatus;
+      int? restoredSeason;
+      int? restoredEpisodeNumber;
+      int? restoredEpisodeId;
+
+      if (hasStoredPreviousState) {
+        restoredStatus = latest['previous_status'] as String;
+        restoredSeason = latest['previous_season'] as int?;
+        restoredEpisodeNumber = latest['previous_episode_number'] as int?;
+        restoredEpisodeId = latest['previous_episode_id'] as int?;
+      } else if (logs.length > 1) {
+        final previousLog = logs[1];
+
+        restoredStatus = currentLibraryEntry['status'] as String? ?? 'watching';
+        restoredSeason = previousLog['season'] as int?;
+        restoredEpisodeNumber = previousLog['episode_number'] as int?;
+        restoredEpisodeId = previousLog['episode_id'] as int?;
+      } else {
+        restoredStatus = currentLibraryEntry['status'] as String? ?? 'watching';
+        restoredSeason = null;
+        restoredEpisodeNumber = null;
+        restoredEpisodeId = null;
+      }
+
+      final updatedEntry = Map<String, Object?>.from(currentLibraryEntry)
+        ..['status'] = restoredStatus
+        ..['last_season'] = restoredSeason
+        ..['last_episode'] = restoredEpisodeNumber
+        ..['last_episode_id'] = restoredEpisodeId
+        ..['updated_at'] = DateTime.now().toUtc().toIso8601String();
+
+      await transaction.delete(
+        'episode_watch_logs',
+        where: 'id = ?',
+        whereArgs: [latest['id']],
+      );
+
+      await transaction.insert(
+        'library_entries',
+        updatedEntry,
+        conflictAlgorithm: ConflictAlgorithm.replace,
+      );
+
+      return latest;
     });
   }
 

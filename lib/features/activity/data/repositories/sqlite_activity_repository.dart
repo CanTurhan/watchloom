@@ -35,6 +35,21 @@ class SqliteActivityRepository implements ActivityRepository {
   }
 
   @override
+  Future<EpisodeWatchLog?> undoLatestEpisode({
+    required LibraryEntry currentLibraryEntry,
+  }) async {
+    final row = await _localDataSource.undoLatestEpisode(
+      currentLibraryEntry: currentLibraryEntry.toMap(),
+    );
+
+    if (row == null) {
+      return null;
+    }
+
+    return EpisodeWatchLog.fromMap(row);
+  }
+
+  @override
   Future<bool> unlockAchievement(UnlockedAchievement achievement) {
     return _localDataSource.unlockAchievement(achievement.toMap());
   }
