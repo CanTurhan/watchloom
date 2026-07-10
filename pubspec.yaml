@@ -49,6 +49,9 @@ dependencies:
   html: ^0.15.6
   shared_preferences: ^2.5.5
   cross_file: ^0.3.5+4
+  flutter_local_notifications: ^19.5.0
+  flutter_timezone: ^5.1.0
+  timezone: ^0.10.1
 
 dev_dependencies:
   flutter_test:

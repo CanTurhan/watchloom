@@ -9,6 +9,7 @@ import 'package:watchloom/features/activity/presentation/controllers/watch_activ
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
 import 'package:watchloom/features/shows/presentation/show_search_page.dart';
+import 'package:watchloom/features/library/presentation/widgets/library_show_metadata.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -21,6 +22,7 @@ class LibraryPage extends StatefulWidget {
 
 class _LibraryPageState extends State<LibraryPage> {
   LibraryStatus? _selectedStatus;
+  bool _favoritesOnly = false;
 
   @override
   Widget build(BuildContext context) {
@@ -40,6 +42,10 @@ class _LibraryPageState extends State<LibraryPage> {
               final entries = libraryController.entries
                   .where((entry) {
                     final selectedStatus = _selectedStatus;
+
+                    if (_favoritesOnly && !entry.isFavorite) {
+                      return false;
+                    }
 
                     return selectedStatus == null ||
                         entry.status == selectedStatus;
@@ -88,6 +94,22 @@ class _LibraryPageState extends State<LibraryPage> {
                             onSelected: (selected) {
                               setState(() {
                                 _selectedStatus = null;
+                              });
+                            },
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          child: FilterChip(
+                            avatar: const Icon(
+                              Icons.favorite_rounded,
+                              size: 17,
+                            ),
+                            label: Text(strings.favorites),
+                            selected: _favoritesOnly,
+                            onSelected: (selected) {
+                              setState(() {
+                                _favoritesOnly = selected;
                               });
                             },
                           ),
@@ -162,7 +184,9 @@ class _LibraryPageState extends State<LibraryPage> {
               ),
               const SizedBox(height: 8),
               Text(
-                strings.emptyLibraryDescription,
+                _favoritesOnly
+                    ? strings.noFavoriteShows
+                    : strings.emptyLibraryDescription,
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.textSecondary,
@@ -205,33 +229,120 @@ class _LibraryPageState extends State<LibraryPage> {
         itemBuilder: (context, index) {
           final entry = entries[index];
 
-          return _LibraryCard(
-            entry: entry,
-            statusText: strings.statusName(entry.status),
-            notStartedText: strings.notStarted,
-            removeText: strings.remove,
-            markText: strings.markNextEpisodeAction,
-            isProcessing: activityController.isProcessing(entry.showId),
-            onTap: () {
-              Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => ShowDetailPage(
-                    showRepository: scope.showRepository,
-                    initialShow: entry.toTvShow(),
-                  ),
-                ),
-              );
-            },
-            onMarkNext: () {
-              _markNextEpisode(context, strings, entry);
-            },
-            onRemove: () {
-              _removeEntry(context, strings, entry);
-            },
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _LibraryCard(
+                entry: entry,
+                statusText: strings.statusName(entry.status),
+                notStartedText: strings.notStarted,
+                removeText: strings.remove,
+                markText: strings.markNextEpisodeAction,
+                isProcessing: activityController.isProcessing(entry.showId),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => ShowDetailPage(
+                        showRepository: scope.showRepository,
+                        initialShow: entry.toTvShow(),
+                      ),
+                    ),
+                  );
+                },
+                onMarkNext: () {
+                  _markNextEpisode(context, strings, entry);
+                },
+                onRemove: () {
+                  _removeEntry(context, strings, entry);
+                },
+              ),
+              const SizedBox(height: 8),
+              _LibraryPersonalActions(
+                entry: entry,
+                favoriteText: entry.isFavorite
+                    ? strings.removeFromFavorites
+                    : strings.addToFavorites,
+                noteText: entry.hasPersonalNote
+                    ? strings.editPersonalNote
+                    : strings.addPersonalNote,
+                onFavorite: () {
+                  _toggleFavorite(context, strings, entry);
+                },
+                onNote: () {
+                  _editPersonalNote(context, strings, entry);
+                },
+              ),
+              LibraryShowMetadata(entry: entry),
+              const SizedBox(height: 8),
+              if (entry.hasPersonalNote) ...[
+                const SizedBox(height: 8),
+                _PersonalNoteCard(note: entry.personalNote),
+              ],
+            ],
           );
         },
       ),
     );
+  }
+
+  Future<void> _toggleFavorite(
+    BuildContext context,
+    AppStrings strings,
+    LibraryEntry entry,
+  ) async {
+    final wasFavorite = entry.isFavorite;
+
+    await AppScope.of(context).libraryController.toggleFavorite(entry.showId);
+
+    if (!context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          wasFavorite ? strings.removedFromFavorites : strings.addedToFavorites,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _editPersonalNote(
+    BuildContext context,
+    AppStrings strings,
+    LibraryEntry entry,
+  ) async {
+    final libraryController = AppScope.of(context).libraryController;
+
+    final saved = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return _PersonalNoteDialog(
+          initialNote: entry.personalNote,
+          title: entry.hasPersonalNote
+              ? strings.editPersonalNote
+              : strings.addPersonalNote,
+          hintText: strings.personalNoteHint,
+          cancelText: strings.cancel,
+          saveText: strings.save,
+          onSave: (note) {
+            return libraryController.updatePersonalNote(
+              showId: entry.showId,
+              note: note,
+            );
+          },
+        );
+      },
+    );
+
+    if (saved != true || !context.mounted) {
+      return;
+    }
+
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(strings.personalNoteSaved)));
   }
 
   Future<void> _markNextEpisode(
@@ -553,6 +664,214 @@ class _Poster extends StatelessWidget {
           child: Icon(Icons.broken_image_outlined),
         );
       },
+    );
+  }
+}
+
+class _LibraryPersonalActions extends StatelessWidget {
+  const _LibraryPersonalActions({
+    required this.entry,
+    required this.favoriteText,
+    required this.noteText,
+    required this.onFavorite,
+    required this.onNote,
+  });
+
+  final LibraryEntry entry;
+  final String favoriteText;
+  final String noteText;
+  final VoidCallback onFavorite;
+  final VoidCallback onNote;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: onFavorite,
+            icon: Icon(
+              entry.isFavorite
+                  ? Icons.favorite_rounded
+                  : Icons.favorite_border_rounded,
+              size: 18,
+              color: entry.isFavorite ? AppColors.accentSoft : null,
+            ),
+            label: Text(
+              favoriteText,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: OutlinedButton.icon(
+            onPressed: onNote,
+            icon: Icon(
+              entry.hasPersonalNote
+                  ? Icons.note_alt_rounded
+                  : Icons.note_add_outlined,
+              size: 18,
+              color: entry.hasPersonalNote ? AppColors.accentSoft : null,
+            ),
+            label: Text(noteText, maxLines: 1, overflow: TextOverflow.ellipsis),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PersonalNoteCard extends StatelessWidget {
+  const _PersonalNoteCard({required this.note});
+
+  final String note;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: AppColors.accent.withValues(alpha: 0.18)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Icon(
+            Icons.note_alt_rounded,
+            size: 19,
+            color: AppColors.accentSoft,
+          ),
+          const SizedBox(width: 9),
+          Expanded(
+            child: Text(
+              note,
+              style: const TextStyle(
+                color: AppColors.textSecondary,
+                fontSize: 12,
+                height: 1.45,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PersonalNoteDialog extends StatefulWidget {
+  const _PersonalNoteDialog({
+    required this.initialNote,
+    required this.title,
+    required this.hintText,
+    required this.cancelText,
+    required this.saveText,
+    required this.onSave,
+  });
+
+  final String initialNote;
+  final String title;
+  final String hintText;
+  final String cancelText;
+  final String saveText;
+  final Future<void> Function(String note) onSave;
+
+  @override
+  State<_PersonalNoteDialog> createState() {
+    return _PersonalNoteDialogState();
+  }
+}
+
+class _PersonalNoteDialogState extends State<_PersonalNoteDialog> {
+  late final TextEditingController _controller;
+
+  bool _isSaving = false;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _controller = TextEditingController(text: widget.initialNote);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _save() async {
+    if (_isSaving) {
+      return;
+    }
+
+    setState(() {
+      _isSaving = true;
+    });
+
+    final navigator = Navigator.of(context);
+
+    try {
+      await widget.onSave(_controller.text.trim());
+
+      if (!mounted) {
+        return;
+      }
+
+      navigator.pop(true);
+    } catch (_) {
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _isSaving = false;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: !_isSaving,
+      child: AlertDialog(
+        title: Text(widget.title),
+        content: TextField(
+          controller: _controller,
+          autofocus: true,
+          enabled: !_isSaving,
+          minLines: 3,
+          maxLines: 6,
+          maxLength: 500,
+          decoration: InputDecoration(
+            hintText: widget.hintText,
+            border: const OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: _isSaving
+                ? null
+                : () {
+                    Navigator.of(context).pop(false);
+                  },
+            child: Text(widget.cancelText),
+          ),
+          FilledButton(
+            onPressed: _isSaving ? null : _save,
+            child: _isSaving
+                ? const SizedBox(
+                    width: 18,
+                    height: 18,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Text(widget.saveText),
+          ),
+        ],
+      ),
     );
   }
 }

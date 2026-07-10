@@ -116,4 +116,42 @@ extension AppLibraryStrings on AppStrings {
     en: 'You have no favorite shows yet.',
     tr: 'Henüz favori dizin yok.',
   );
+
+  String get platformLabel => value(en: 'Platform', tr: 'Platform');
+
+  String get releaseLabel => value(en: 'Release', tr: 'Yayın');
+
+  String get castLabel => value(en: 'Cast', tr: 'Oyuncular');
+
+  String get upcomingNotifications => value(
+    en: 'Upcoming episode notifications',
+    tr: 'Yaklaşan bölüm bildirimleri',
+  );
+
+  String get notificationsEnabledMessage => value(
+    en: 'Upcoming episode notifications are enabled.',
+    tr: 'Yaklaşan bölüm bildirimleri açıldı.',
+  );
+
+  String get notificationsDisabledMessage => value(
+    en: 'Upcoming episode notifications are disabled.',
+    tr: 'Yaklaşan bölüm bildirimleri kapatıldı.',
+  );
+
+  String get notificationsDeniedMessage => value(
+    en: 'Notification permission was not granted.',
+    tr: 'Bildirim izni verilmedi.',
+  );
+
+  String get notificationsFailedMessage => value(
+    en: 'Notifications could not be updated.',
+    tr: 'Bildirimler güncellenemedi.',
+  );
+
+  String notificationCountMessage(int count) {
+    return value(
+      en: '$count upcoming episode notification(s) scheduled.',
+      tr: '$count yaklaşan bölüm bildirimi planlandı.',
+    );
+  }
 }
