@@ -6,6 +6,8 @@ import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/features/settings/data/local_data_reset_service.dart';
 import 'package:watchloom/features/settings/presentation/pages/notification_settings_page.dart';
+import 'package:watchloom/core/monetization/ad_consent_controller.dart';
+import 'package:watchloom/core/localization/app_monetization_strings.dart';
 
 class SettingsHubPage extends StatefulWidget {
   const SettingsHubPage({super.key});
@@ -183,6 +185,8 @@ class _SettingsHubPageState extends State<SettingsHubPage> {
             ),
           ),
           const SizedBox(height: 18),
+
+          const SizedBox(height: 10),
           _SettingsTile(
             icon: Icons.notifications_rounded,
             title: strings.notificationsSettingTitle,
@@ -234,6 +238,7 @@ class _SettingsHubPageState extends State<SettingsHubPage> {
               );
             },
           ),
+          const _AdPrivacyChoicesTile(),
           const SizedBox(height: 24),
           Text(
             strings.localDataTitle,
@@ -396,6 +401,61 @@ class _InformationPage extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _AdPrivacyChoicesTile extends StatelessWidget {
+  const _AdPrivacyChoicesTile();
+
+  Future<void> _open(BuildContext context) async {
+    final controller = AdConsentController.instance;
+
+    final strings = AppStrings.of(context);
+
+    final messenger = ScaffoldMessenger.of(context);
+
+    final opened = await controller.showPrivacyOptions();
+
+    if (!context.mounted) {
+      return;
+    }
+
+    if (!opened) {
+      messenger.hideCurrentSnackBar();
+
+      messenger.showSnackBar(
+        SnackBar(content: Text(strings.privacyOptionsUnavailable)),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppStrings.of(context);
+    final controller = AdConsentController.instance;
+
+    return ListenableBuilder(
+      listenable: controller,
+      builder: (context, child) {
+        if (!controller.privacyOptionsRequired) {
+          return const SizedBox.shrink();
+        }
+
+        return Column(
+          children: [
+            _SettingsTile(
+              icon: Icons.tune_rounded,
+              title: strings.privacyChoicesTitle,
+              subtitle: strings.privacyChoicesSubtitle,
+              onTap: () {
+                _open(context);
+              },
+            ),
+            const SizedBox(height: 10),
+          ],
+        );
+      },
     );
   }
 }

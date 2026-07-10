@@ -47,3 +47,4 @@ app.*.map.json
 *.backup
 *.before_*
 *.before_library
+*.crashing_backup
