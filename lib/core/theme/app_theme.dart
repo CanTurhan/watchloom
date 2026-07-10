@@ -14,6 +14,25 @@ abstract final class AppTheme {
         );
 
     return ThemeData(
+      snackBarTheme: const SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppColors.surfaceLight,
+        elevation: 14,
+        insetPadding: EdgeInsets.fromLTRB(16, 0, 16, 18),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(18)),
+          side: BorderSide(color: Color(0x668D78FF), width: 1),
+        ),
+        contentTextStyle: TextStyle(
+          color: AppColors.textPrimary,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+          height: 1.35,
+        ),
+        actionTextColor: AppColors.accentSoft,
+        disabledActionTextColor: AppColors.textSecondary,
+      ),
+
       useMaterial3: true,
       brightness: Brightness.dark,
       scaffoldBackgroundColor: AppColors.background,
