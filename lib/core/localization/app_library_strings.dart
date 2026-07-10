@@ -81,4 +81,39 @@ extension AppLibraryStrings on AppStrings {
         return value(en: 'Dropped', tr: 'Bırakıldı');
     }
   }
+
+  String get favorites => value(en: 'Favorites', tr: 'Favoriler');
+
+  String get addToFavorites =>
+      value(en: 'Add to Favorites', tr: 'Favorilere Ekle');
+
+  String get removeFromFavorites =>
+      value(en: 'Remove from Favorites', tr: 'Favorilerden Çıkar');
+
+  String get addedToFavorites =>
+      value(en: 'Added to favorites.', tr: 'Favorilere eklendi.');
+
+  String get removedFromFavorites =>
+      value(en: 'Removed from favorites.', tr: 'Favorilerden çıkarıldı.');
+
+  String get personalNote => value(en: 'Personal Note', tr: 'Kişisel Not');
+
+  String get addPersonalNote =>
+      value(en: 'Add a personal note', tr: 'Kişisel not ekle');
+
+  String get editPersonalNote =>
+      value(en: 'Edit Personal Note', tr: 'Kişisel Notu Düzenle');
+
+  String get personalNoteHint => value(
+    en: 'What do you want to remember about this show?',
+    tr: 'Bu dizi hakkında neyi hatırlamak istiyorsun?',
+  );
+
+  String get personalNoteSaved =>
+      value(en: 'Personal note saved.', tr: 'Kişisel not kaydedildi.');
+
+  String get noFavoriteShows => value(
+    en: 'You have no favorite shows yet.',
+    tr: 'Henüz favori dizin yok.',
+  );
 }

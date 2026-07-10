@@ -16,7 +16,7 @@ class WatchloomDatabase {
 
     final openedDatabase = await openDatabase(
       databasePath,
-      version: 3,
+      version: 4,
       onConfigure: (database) async {
         await database.execute('PRAGMA foreign_keys = ON');
       },
@@ -31,6 +31,10 @@ class WatchloomDatabase {
 
         if (oldVersion < 3) {
           await _ensureWatchHistoryColumns(database);
+        }
+
+        if (oldVersion < 4) {
+          await _ensureLibraryPersonalColumns(database);
         }
       },
     );
@@ -56,6 +60,8 @@ class WatchloomDatabase {
         last_season INTEGER,
         last_episode INTEGER,
         last_episode_id INTEGER,
+        is_favorite INTEGER NOT NULL DEFAULT 0,
+        personal_note TEXT NOT NULL DEFAULT '',
         added_at TEXT NOT NULL,
         updated_at TEXT NOT NULL
       )
@@ -145,6 +151,33 @@ class WatchloomDatabase {
       await database.execute(
         'ALTER TABLE episode_watch_logs '
         'ADD COLUMN previous_episode_id INTEGER',
+      );
+    }
+  }
+
+  Future<void> _ensureLibraryPersonalColumns(Database database) async {
+    final columns = await database.rawQuery(
+      'PRAGMA table_info(library_entries)',
+    );
+
+    final columnNames = columns
+        .map((column) => column['name']?.toString())
+        .whereType<String>()
+        .toSet();
+
+    if (!columnNames.contains('is_favorite')) {
+      await database.execute(
+        'ALTER TABLE library_entries '
+        'ADD COLUMN is_favorite '
+        'INTEGER NOT NULL DEFAULT 0',
+      );
+    }
+
+    if (!columnNames.contains('personal_note')) {
+      await database.execute(
+        'ALTER TABLE library_entries '
+        "ADD COLUMN personal_note "
+        "TEXT NOT NULL DEFAULT ''",
       );
     }
   }

@@ -33,6 +33,8 @@ class LibraryEntry {
     this.lastSeason,
     this.lastEpisode,
     this.lastEpisodeId,
+    this.isFavorite = false,
+    this.personalNote = '',
   });
 
   final int showId;
@@ -52,11 +54,18 @@ class LibraryEntry {
   final int? lastEpisode;
   final int? lastEpisodeId;
 
+  final bool isFavorite;
+  final String personalNote;
+
   final DateTime addedAt;
   final DateTime updatedAt;
 
   bool get hasProgress {
     return lastSeason != null && lastEpisode != null;
+  }
+
+  bool get hasPersonalNote {
+    return personalNote.trim().isNotEmpty;
   }
 
   String get progressCode {
@@ -65,6 +74,7 @@ class LibraryEntry {
     }
 
     final seasonText = lastSeason.toString().padLeft(2, '0');
+
     final episodeText = lastEpisode.toString().padLeft(2, '0');
 
     return 'S$seasonText · E$episodeText';
@@ -75,6 +85,8 @@ class LibraryEntry {
     int? lastSeason,
     int? lastEpisode,
     int? lastEpisodeId,
+    bool? isFavorite,
+    String? personalNote,
     DateTime? updatedAt,
   }) {
     return LibraryEntry(
@@ -92,6 +104,8 @@ class LibraryEntry {
       lastSeason: lastSeason ?? this.lastSeason,
       lastEpisode: lastEpisode ?? this.lastEpisode,
       lastEpisodeId: lastEpisodeId ?? this.lastEpisodeId,
+      isFavorite: isFavorite ?? this.isFavorite,
+      personalNote: personalNote ?? this.personalNote,
       addedAt: addedAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -128,6 +142,8 @@ class LibraryEntry {
       'last_season': lastSeason,
       'last_episode': lastEpisode,
       'last_episode_id': lastEpisodeId,
+      'is_favorite': isFavorite ? 1 : 0,
+      'personal_note': personalNote,
       'added_at': addedAt.toUtc().toIso8601String(),
       'updated_at': updatedAt.toUtc().toIso8601String(),
     };
@@ -135,6 +151,7 @@ class LibraryEntry {
 
   factory LibraryEntry.fromMap(Map<String, Object?> map) {
     final genresValue = map['genres_json'];
+
     final decodedGenres = genresValue is String
         ? jsonDecode(genresValue)
         : const <dynamic>[];
@@ -156,6 +173,8 @@ class LibraryEntry {
       lastSeason: map['last_season'] as int?,
       lastEpisode: map['last_episode'] as int?,
       lastEpisodeId: map['last_episode_id'] as int?,
+      isFavorite: (map['is_favorite'] as num? ?? 0) != 0,
+      personalNote: map['personal_note'] as String? ?? '',
       addedAt: DateTime.parse(map['added_at'] as String),
       updatedAt: DateTime.parse(map['updated_at'] as String),
     );

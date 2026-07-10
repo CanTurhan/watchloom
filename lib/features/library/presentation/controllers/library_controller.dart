@@ -17,6 +17,10 @@ class LibraryController extends ChangeNotifier {
     return UnmodifiableListView(_entries);
   }
 
+  List<LibraryEntry> get favoriteEntries {
+    return _entries.where((entry) => entry.isFavorite).toList(growable: false);
+  }
+
   bool get isLoading => _isLoading;
   Object? get error => _error;
 
@@ -48,6 +52,33 @@ class LibraryController extends ChangeNotifier {
   Future<void> saveEntry(LibraryEntry entry) async {
     await _repository.saveEntry(entry);
     await load();
+  }
+
+  Future<void> toggleFavorite(int showId) async {
+    final entry = findByShowId(showId);
+
+    if (entry == null) {
+      return;
+    }
+
+    await saveEntry(
+      entry.copyWith(isFavorite: !entry.isFavorite, updatedAt: DateTime.now()),
+    );
+  }
+
+  Future<void> updatePersonalNote({
+    required int showId,
+    required String note,
+  }) async {
+    final entry = findByShowId(showId);
+
+    if (entry == null) {
+      return;
+    }
+
+    await saveEntry(
+      entry.copyWith(personalNote: note.trim(), updatedAt: DateTime.now()),
+    );
   }
 
   Future<void> deleteEntry(int showId) async {
