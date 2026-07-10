@@ -1,9 +1,9 @@
+import 'package:watchloom/core/localization/app_settings_strings.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_locale_controller.dart';
-import 'package:watchloom/core/localization/app_notification_strings.dart';
 import 'package:watchloom/core/localization/app_story_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/notifications/upcoming_episode_notification_service.dart';
@@ -13,9 +13,9 @@ import 'package:watchloom/features/home/presentation/home_page.dart';
 import 'package:watchloom/features/library/presentation/controllers/library_controller.dart';
 import 'package:watchloom/features/library/presentation/pages/library_page.dart';
 import 'package:watchloom/features/profile/presentation/profile_page.dart';
-import 'package:watchloom/features/settings/presentation/pages/notification_settings_page.dart';
 import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
 import 'package:watchloom/features/shows/presentation/show_search_page.dart';
+import 'package:watchloom/features/settings/presentation/pages/settings_hub_page.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({required this.localeController, super.key});
@@ -246,10 +246,10 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  void _openNotificationSettings() {
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(builder: (_) => const NotificationSettingsPage()),
-    );
+  void _openSettings() {
+    Navigator.of(
+      context,
+    ).push(MaterialPageRoute<void>(builder: (_) => const SettingsHubPage()));
   }
 
   Widget? _buildFloatingActionButton(AppStrings strings) {
@@ -271,9 +271,9 @@ class _MainShellState extends State<MainShell> {
     if (_selectedIndex == 4) {
       return FloatingActionButton.extended(
         heroTag: 'notification-settings',
-        onPressed: _openNotificationSettings,
+        onPressed: _openSettings,
         icon: const Icon(Icons.notifications_rounded),
-        label: Text(strings.openNotificationSettings),
+        label: Text(strings.settingsTitle),
       );
     }
 

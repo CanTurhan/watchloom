@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_notification_strings.dart';
@@ -385,12 +386,16 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                       : const Icon(Icons.refresh_rounded),
                   label: Text(strings.refreshNotificationSchedule),
                 ),
-                const SizedBox(height: 10),
-                OutlinedButton.icon(
-                  onPressed: !_enabled || _busy ? null : _sendTestNotification,
-                  icon: const Icon(Icons.notification_add_outlined),
-                  label: Text(strings.sendTestNotification),
-                ),
+                if (kDebugMode) ...[
+                  const SizedBox(height: 10),
+                  OutlinedButton.icon(
+                    onPressed: !_enabled || _busy
+                        ? null
+                        : _sendTestNotification,
+                    icon: const Icon(Icons.notification_add_outlined),
+                    label: Text(strings.sendTestNotification),
+                  ),
+                ],
                 const SizedBox(height: 22),
                 Text(
                   strings.localNotificationExplanation,
