@@ -73,4 +73,27 @@ extension AppNotificationStrings on AppStrings {
     en: 'Add a show to your library before sending a test notification.',
     tr: 'Test bildirimi göndermeden önce kütüphanene bir dizi ekle.',
   );
+
+  String get reminderTimingTitle =>
+      value(en: 'Reminder Time', tr: 'Hatırlatma Zamanı');
+
+  String get reminderTimingSubtitle => value(
+    en: 'Choose when Watchloom should remind you before an episode.',
+    tr: 'Watchloom’un yeni bölümden ne kadar önce hatırlatacağını seç.',
+  );
+
+  String get reminderOneDayBefore =>
+      value(en: '1 day before', tr: '1 gün önce');
+
+  String get reminderThreeHoursBefore =>
+      value(en: '3 hours before', tr: '3 saat önce');
+
+  String get reminderOneHourBefore =>
+      value(en: '1 hour before', tr: '1 saat önce');
+
+  String get reminderAtAirTime =>
+      value(en: 'At release time', tr: 'Yayın saatinde');
+
+  String get reminderTimingUpdated =>
+      value(en: 'Reminder time updated.', tr: 'Hatırlatma zamanı güncellendi.');
 }

@@ -22,6 +22,8 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
   bool _busy = false;
   int _scheduledCount = 0;
 
+  NotificationReminderTiming _timing = NotificationReminderTiming.oneDayBefore;
+
   @override
   void initState() {
     super.initState();
@@ -36,6 +38,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
 
     final enabled = await service.isEnabled;
     final count = await service.scheduledCount;
+    final timing = await service.reminderTiming;
 
     if (!mounted) {
       return;
@@ -44,6 +47,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     setState(() {
       _enabled = enabled;
       _scheduledCount = count;
+      _timing = timing;
       _loading = false;
     });
   }
@@ -115,6 +119,69 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     }
   }
 
+  Future<void> _changeTiming(NotificationReminderTiming? timing) async {
+    if (timing == null || timing == _timing || _busy) {
+      return;
+    }
+
+    final previousTiming = _timing;
+    final strings = AppStrings.of(context);
+
+    final entries = AppScope.of(context).libraryController.entries.toList();
+
+    final isTurkish = Localizations.localeOf(context).languageCode == 'tr';
+
+    setState(() {
+      _timing = timing;
+      _busy = true;
+    });
+
+    try {
+      final service = UpcomingEpisodeNotificationService.instance;
+
+      await service.setReminderTiming(timing);
+
+      var updatedCount = _scheduledCount;
+
+      if (_enabled) {
+        updatedCount = await service.syncIfEnabled(
+          entries: entries,
+          isTurkish: isTurkish,
+        );
+      }
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _scheduledCount = updatedCount;
+      });
+
+      _showMessage(strings.reminderTimingUpdated);
+    } catch (_) {
+      await UpcomingEpisodeNotificationService.instance.setReminderTiming(
+        previousTiming,
+      );
+
+      if (!mounted) {
+        return;
+      }
+
+      setState(() {
+        _timing = previousTiming;
+      });
+
+      _showMessage(strings.notificationSyncFailed);
+    } finally {
+      if (mounted) {
+        setState(() {
+          _busy = false;
+        });
+      }
+    }
+  }
+
   Future<void> _refreshSchedule() async {
     if (_busy || !_enabled) {
       return;
@@ -165,6 +232,7 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
     }
 
     final strings = AppStrings.of(context);
+
     final entries = AppScope.of(context).libraryController.entries.toList();
 
     if (entries.isEmpty) {
@@ -212,6 +280,22 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
           _busy = false;
         });
       }
+    }
+  }
+
+  String _timingLabel(AppStrings strings, NotificationReminderTiming timing) {
+    switch (timing) {
+      case NotificationReminderTiming.oneDayBefore:
+        return strings.reminderOneDayBefore;
+
+      case NotificationReminderTiming.threeHoursBefore:
+        return strings.reminderThreeHoursBefore;
+
+      case NotificationReminderTiming.oneHourBefore:
+        return strings.reminderOneHourBefore;
+
+      case NotificationReminderTiming.atAirTime:
+        return strings.reminderAtAirTime;
     }
   }
 
@@ -313,6 +397,87 @@ class _NotificationSettingsPageState extends State<NotificationSettingsPage> {
                           ? AppColors.accentSoft
                           : AppColors.textSecondary,
                     ),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Container(
+                            width: 46,
+                            height: 46,
+                            decoration: BoxDecoration(
+                              color: AppColors.accent.withValues(alpha: 0.14),
+                              borderRadius: BorderRadius.circular(14),
+                            ),
+                            child: const Icon(
+                              Icons.alarm_rounded,
+                              color: AppColors.accentSoft,
+                            ),
+                          ),
+                          const SizedBox(width: 13),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  strings.reminderTimingTitle,
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  strings.reminderTimingSubtitle,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                    height: 1.4,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14),
+                        decoration: BoxDecoration(
+                          color: AppColors.surfaceLight,
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: AppColors.accent.withValues(alpha: 0.18),
+                          ),
+                        ),
+                        child: DropdownButtonHideUnderline(
+                          child: DropdownButton<NotificationReminderTiming>(
+                            value: _timing,
+                            isExpanded: true,
+                            icon: const Icon(Icons.keyboard_arrow_down_rounded),
+                            onChanged: _busy ? null : _changeTiming,
+                            items: NotificationReminderTiming.values.map((
+                              timing,
+                            ) {
+                              return DropdownMenuItem<
+                                NotificationReminderTiming
+                              >(
+                                value: timing,
+                                child: Text(_timingLabel(strings, timing)),
+                              );
+                            }).toList(),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(height: 16),

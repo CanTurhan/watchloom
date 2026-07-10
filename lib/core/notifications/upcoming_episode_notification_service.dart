@@ -8,6 +8,13 @@ import 'package:timezone/data/latest.dart' as tz_data;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 
+enum NotificationReminderTiming {
+  oneDayBefore,
+  threeHoursBefore,
+  oneHourBefore,
+  atAirTime,
+}
+
 class NotificationSyncResult {
   const NotificationSyncResult({
     required this.permissionGranted,
@@ -27,6 +34,8 @@ class UpcomingEpisodeNotificationService {
   static const String _enabledKey = 'upcoming_episode_notifications_enabled';
 
   static const String _scheduledIdsKey = 'upcoming_episode_notification_ids';
+
+  static const String _reminderTimingKey = 'upcoming_episode_reminder_timing';
 
   static const String _channelId = 'watchloom_upcoming_episodes';
 
@@ -128,6 +137,26 @@ class UpcomingEpisodeNotificationService {
     final preferences = await SharedPreferences.getInstance();
 
     return preferences.getStringList(_scheduledIdsKey)?.length ?? 0;
+  }
+
+  Future<NotificationReminderTiming> get reminderTiming async {
+    final preferences = await SharedPreferences.getInstance();
+
+    final storedValue = preferences.getString(_reminderTimingKey);
+
+    for (final timing in NotificationReminderTiming.values) {
+      if (timing.name == storedValue) {
+        return timing;
+      }
+    }
+
+    return NotificationReminderTiming.oneDayBefore;
+  }
+
+  Future<void> setReminderTiming(NotificationReminderTiming timing) async {
+    final preferences = await SharedPreferences.getInstance();
+
+    await preferences.setString(_reminderTimingKey, timing.name);
   }
 
   Future<NotificationSyncResult> enableAndSync({
@@ -256,15 +285,16 @@ class UpcomingEpisodeNotificationService {
     required bool isTurkish,
   }) async {
     if (_syncing) {
-      return scheduledCount;
+      return await scheduledCount;
     }
 
     _syncing = true;
 
     try {
       await initialize();
-
       await _cancelPreviouslyScheduled();
+
+      final selectedTiming = await reminderTiming;
 
       final eligibleEntries = entries
           .where(
@@ -287,6 +317,7 @@ class UpcomingEpisodeNotificationService {
 
           final notificationTime = _calculateNotificationTime(
             nextEpisode.airDateTime,
+            selectedTiming,
           );
 
           if (notificationTime == null) {
@@ -368,13 +399,26 @@ class UpcomingEpisodeNotificationService {
     await preferences.remove(_scheduledIdsKey);
   }
 
-  DateTime? _calculateNotificationTime(DateTime episodeDate) {
+  DateTime? _calculateNotificationTime(
+    DateTime episodeDate,
+    NotificationReminderTiming timing,
+  ) {
     final now = DateTime.now();
 
-    var notificationTime = episodeDate.subtract(const Duration(days: 1));
+    final DateTime notificationTime;
 
-    if (!notificationTime.isAfter(now)) {
-      notificationTime = episodeDate.subtract(const Duration(hours: 1));
+    switch (timing) {
+      case NotificationReminderTiming.oneDayBefore:
+        notificationTime = episodeDate.subtract(const Duration(days: 1));
+
+      case NotificationReminderTiming.threeHoursBefore:
+        notificationTime = episodeDate.subtract(const Duration(hours: 3));
+
+      case NotificationReminderTiming.oneHourBefore:
+        notificationTime = episodeDate.subtract(const Duration(hours: 1));
+
+      case NotificationReminderTiming.atAirTime:
+        notificationTime = episodeDate;
     }
 
     if (!notificationTime.isAfter(now.add(const Duration(minutes: 2)))) {
