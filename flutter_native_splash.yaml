@@ -1,0 +1,10 @@
+flutter_native_splash:
+  color: "#070916"
+  color_dark: "#070916"
+  image_ios: assets/branding/watchloom_splash.png
+  image_dark_ios: assets/branding/watchloom_splash.png
+  ios: true
+  android: false
+  web: false
+  ios_content_mode: center
+  fullscreen: true
