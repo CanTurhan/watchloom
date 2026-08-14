@@ -17,7 +17,6 @@ import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
 import 'package:watchloom/features/shows/presentation/show_search_page.dart';
 import 'package:watchloom/features/settings/presentation/pages/settings_hub_page.dart';
 import 'package:watchloom/core/monetization/watchloom_banner.dart';
-import 'package:watchloom/core/monetization/ad_consent_controller.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({required this.localeController, super.key});
@@ -42,13 +41,6 @@ class _MainShellState extends State<MainShell> {
   bool _isSharingStory = false;
   bool _notificationBootstrapStarted = false;
   bool _openingNotificationShow = false;
-
-  @override
-  void initState() {
-    super.initState();
-
-    unawaited(AdConsentController.instance.initialize());
-  }
 
   @override
   void didChangeDependencies() {
