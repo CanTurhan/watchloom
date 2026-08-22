@@ -11,12 +11,10 @@ class WatchloomBanner extends StatefulWidget {
 }
 
 class _WatchloomBannerState extends State<WatchloomBanner> {
-  static const String _adUnitId = 'R-M-19758972-1';
+  static const String _adUnitId = 'demo-banner-yandex';
 
   BannerAd? _banner;
-  StreamSubscription<BannerAdLoadState>? _subscription;
-
-  bool _loaded = false;
+  StreamSubscription<BannerAdLoadState>? _loadSubscription;
   bool _requested = false;
 
   @override
@@ -28,7 +26,7 @@ class _WatchloomBannerState extends State<WatchloomBanner> {
     }
 
     _requested = true;
-    _loadBanner();
+    unawaited(_loadBanner());
   }
 
   Future<void> _loadBanner() async {
@@ -36,24 +34,21 @@ class _WatchloomBannerState extends State<WatchloomBanner> {
 
     final banner = BannerAd(adSize: BannerAdSize.sticky(width: width));
 
-    _banner = banner;
-
-    _subscription = banner.loadStateStream.listen((state) {
-      if (!mounted) {
-        return;
-      }
-
+    _loadSubscription = banner.loadStateStream.listen((state) {
       if (state is BannerAdLoadStateLoaded) {
-        setState(() {
-          _loaded = true;
-        });
+        debugPrint('YANDEX BANNER: LOADED');
+      } else if (state is BannerAdLoadStateError) {
+        debugPrint('YANDEX BANNER ERROR: $state');
       }
+    });
 
-      if (state is BannerAdLoadStateError) {
-        setState(() {
-          _loaded = false;
-        });
-      }
+    if (!mounted) {
+      await banner.destroy();
+      return;
+    }
+
+    setState(() {
+      _banner = banner;
     });
 
     await banner.load(AdRequest(adUnitId: _adUnitId));
@@ -61,7 +56,7 @@ class _WatchloomBannerState extends State<WatchloomBanner> {
 
   @override
   void dispose() {
-    final subscription = _subscription;
+    final subscription = _loadSubscription;
     final banner = _banner;
 
     if (subscription != null) {
@@ -79,10 +74,13 @@ class _WatchloomBannerState extends State<WatchloomBanner> {
   Widget build(BuildContext context) {
     final banner = _banner;
 
-    if (!_loaded || banner == null) {
+    if (banner == null) {
       return const SizedBox.shrink();
     }
 
-    return AdWidget(bannerAd: banner);
+    return Align(
+      alignment: Alignment.center,
+      child: AdWidget(bannerAd: banner),
+    );
   }
 }

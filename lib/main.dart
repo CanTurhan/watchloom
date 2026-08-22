@@ -7,11 +7,9 @@ import 'package:watchloom/core/network/app_dependencies.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await YandexAds.initialize();
-
   await YandexAds.setUserConsent(false);
   await YandexAds.setLocationTracking(false);
-  await YandexAds.setLogging(false);
+  await YandexAds.setLogging(true);
   await YandexAds.initialize();
 
   final localeController = await AppLocaleController.create();
