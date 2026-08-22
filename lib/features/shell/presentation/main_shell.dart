@@ -16,7 +16,6 @@ import 'package:watchloom/features/profile/presentation/profile_page.dart';
 import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
 import 'package:watchloom/features/shows/presentation/show_search_page.dart';
 import 'package:watchloom/features/settings/presentation/pages/settings_hub_page.dart';
-import 'package:watchloom/core/monetization/watchloom_banner.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({required this.localeController, super.key});
@@ -300,7 +299,6 @@ class _MainShellState extends State<MainShell> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const WatchloomBanner(),
           NavigationBar(
             selectedIndex: _selectedIndex,
             onDestinationSelected: (index) {
