@@ -8,6 +8,8 @@ import 'package:watchloom/features/activity/presentation/controllers/watch_activ
 import 'package:watchloom/features/library/presentation/controllers/library_controller.dart';
 import 'package:watchloom/features/shell/presentation/main_shell.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
+import 'package:watchloom/features/premium/presentation/subscription_controller.dart';
+import 'package:watchloom/core/monetization/ad_privacy_controller.dart';
 
 class WatchloomApp extends StatelessWidget {
   const WatchloomApp({
@@ -15,6 +17,8 @@ class WatchloomApp extends StatelessWidget {
     required this.showRepository,
     required this.libraryController,
     required this.activityController,
+    required this.premiumController,
+    required this.adPrivacyController,
     super.key,
   });
 
@@ -22,6 +26,8 @@ class WatchloomApp extends StatelessWidget {
   final ShowRepository showRepository;
   final LibraryController libraryController;
   final WatchActivityController activityController;
+  final SubscriptionController premiumController;
+  final AdPrivacyController adPrivacyController;
 
   @override
   Widget build(BuildContext context) {
@@ -32,6 +38,8 @@ class WatchloomApp extends StatelessWidget {
           showRepository: showRepository,
           libraryController: libraryController,
           activityController: activityController,
+          premiumController: premiumController,
+          adPrivacyController: adPrivacyController,
           child: MaterialApp(
             debugShowCheckedModeBanner: false,
             locale: localeController.locale,

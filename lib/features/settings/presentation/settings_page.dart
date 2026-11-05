@@ -1,8 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:watchloom/core/localization/app_locale_controller.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
+import 'package:watchloom/core/localization/app_settings_strings.dart';
+import 'package:watchloom/core/localization/app_monetization_strings.dart';
+import 'package:watchloom/app/app_scope.dart';
+import 'package:watchloom/features/premium/presentation/premium_page.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/features/settings/presentation/legal_page.dart';
+import 'package:watchloom/core/legal/app_legal.dart';
+import 'package:watchloom/core/localization/app_legal_strings.dart';
+import 'package:watchloom/features/settings/presentation/pages/ad_privacy_page.dart';
+import 'package:watchloom/features/settings/presentation/widgets/clear_local_data_tile.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({required this.localeController, super.key});
@@ -19,6 +27,35 @@ class SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
+          ListenableBuilder(
+            listenable: AppScope.of(context).premiumController,
+            builder: (context, _) => Card(
+              child: ListTile(
+                leading: const Icon(
+                  Icons.auto_awesome_rounded,
+                  color: AppColors.accentSoft,
+                ),
+                title: Text(strings.premiumTitle),
+                subtitle: Text(
+                  AppScope.of(context).premiumController.hasAccess
+                      ? strings.premiumActiveBody
+                      : strings.unlimitedShowsBody,
+                ),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => PremiumPage.open(context),
+              ),
+            ),
+          ),
+          const SizedBox(height: 20),
+          Card(
+            child: _SettingsTile(
+              icon: Icons.privacy_tip_outlined,
+              title: strings.adPrivacyTitle,
+              subtitle: strings.adPrivacySubtitle,
+              onTap: () => AdPrivacyPage.open(context),
+            ),
+          ),
+          const SizedBox(height: 20),
           _SectionTitle(strings.general),
           Card(
             child: Column(
@@ -51,7 +88,8 @@ class SettingsPage extends StatelessWidget {
                   onTap: () => _openTextPage(
                     context,
                     strings.privacyPolicy,
-                    isTurkish ? _privacyPolicyTr : _privacyPolicyEn,
+                    strings.privacyBody,
+                    links: LegalPage.privacyLinks(strings),
                   ),
                 ),
                 const Divider(height: 1),
@@ -61,7 +99,8 @@ class SettingsPage extends StatelessWidget {
                   onTap: () => _openTextPage(
                     context,
                     strings.termsOfUse,
-                    isTurkish ? _termsTr : _termsEn,
+                    strings.termsBody,
+                    links: LegalPage.termsLinks(strings),
                   ),
                 ),
                 const Divider(height: 1),
@@ -71,7 +110,8 @@ class SettingsPage extends StatelessWidget {
                   onTap: () => _openTextPage(
                     context,
                     strings.dataSources,
-                    isTurkish ? _dataSourcesTr : _dataSourcesEn,
+                    strings.dataSourceBody,
+                    links: LegalPage.sourceLinks(strings),
                   ),
                 ),
                 const Divider(height: 1),
@@ -82,7 +122,7 @@ class SettingsPage extends StatelessWidget {
                     showLicensePage(
                       context: context,
                       applicationName: 'Watchloom',
-                      applicationVersion: '0.1.0',
+                      applicationVersion: '1.1.0',
                     );
                   },
                 ),
@@ -94,13 +134,16 @@ class SettingsPage extends StatelessWidget {
                     context,
                     strings.helpSupport,
                     isTurkish ? _supportTr : _supportEn,
+                    links: [
+                      LegalLink(strings.contactSupport, AppLegal.contact),
+                    ],
                   ),
                 ),
                 const Divider(height: 1),
                 _SettingsTile(
                   icon: Icons.info_outline_rounded,
                   title: strings.about,
-                  subtitle: '${strings.version} 0.1.0',
+                  subtitle: '${strings.version} 1.1.0',
                   onTap: () => _openTextPage(
                     context,
                     strings.about,
@@ -110,6 +153,9 @@ class SettingsPage extends StatelessWidget {
               ],
             ),
           ),
+          const SizedBox(height: 24),
+          _SectionTitle(strings.localDataTitle),
+          const Card(child: ClearLocalDataTile()),
         ],
       ),
     );
@@ -180,100 +226,33 @@ class SettingsPage extends StatelessWidget {
     );
   }
 
-  void _openTextPage(BuildContext context, String title, String body) {
+  void _openTextPage(
+    BuildContext context,
+    String title,
+    String body, {
+    List<LegalLink> links = const [],
+  }) {
     Navigator.of(context).push(
       MaterialPageRoute<void>(
-        builder: (_) => LegalPage(title: title, body: body),
+        builder: (_) => LegalPage(title: title, body: body, links: links),
       ),
     );
   }
 
-  static const String _privacyPolicyEn = '''
-Watchloom does not require an account.
-
-Language preferences and, when implemented, watch history, notes, streaks and achievements are stored locally on the device.
-
-Watchloom does not currently sell personal data or provide user information to advertisers.
-
-When TV metadata features are enabled, searches and metadata requests may be sent to the selected third-party data provider. That provider may process standard network information required to answer the request.
-
-Deleting the app may remove locally stored Watchloom data unless a backup feature is used.
-
-This policy will be updated before the public App Store release when advertising, analytics, purchases and external data integrations are finalized.
-''';
-
-  static const String _privacyPolicyTr = '''
-Watchloom kullanmak için hesap oluşturulması gerekmez.
-
-Dil tercihi ve ileride eklenecek izleme geçmişi, notlar, seriler ve başarımlar cihaz üzerinde yerel olarak saklanır.
-
-Watchloom şu anda kişisel verileri satmaz ve kullanıcı bilgilerini reklamverenlerle paylaşmaz.
-
-Dizi verisi özellikleri etkinleştirildiğinde arama ve içerik istekleri seçilen üçüncü taraf veri sağlayıcısına gönderilebilir. Bu sağlayıcı, isteği yanıtlamak için gerekli standart ağ bilgilerini işleyebilir.
-
-Bir yedekleme kullanılmadığı takdirde uygulamanın silinmesi cihazda saklanan Watchloom verilerini de silebilir.
-
-Reklam, analiz, satın alma ve harici veri bağlantıları kesinleştiğinde bu politika App Store yayını öncesinde güncellenecektir.
-''';
-
-  static const String _termsEn = '''
-Watchloom is a personal television tracking and journaling application.
-
-Information about shows, episodes and release dates may be incomplete, delayed or changed by third-party data providers and broadcasters.
-
-Upcoming episode dates are informational and should not be treated as guaranteed release schedules.
-
-Users are responsible for the notes and content they enter into the application.
-
-Watchloom may change, remove or add features during development. The current build is a development version and is not a final commercial release.
-''';
-
-  static const String _termsTr = '''
-Watchloom kişisel dizi takibi ve izleme günlüğü uygulamasıdır.
-
-Diziler, bölümler ve yayın tarihleri hakkındaki bilgiler üçüncü taraf veri sağlayıcıları veya yayıncılar nedeniyle eksik, gecikmeli ya da değişmiş olabilir.
-
-Gelecek bölüm tarihleri yalnızca bilgilendirme amaçlıdır ve kesin yayın garantisi olarak kabul edilmemelidir.
-
-Kullanıcılar uygulamaya ekledikleri notlardan ve içeriklerden sorumludur.
-
-Watchloom geliştirme süresince özellik ekleyebilir, kaldırabilir veya değiştirebilir. Mevcut sürüm geliştirme sürümüdür ve nihai ticari yayın değildir.
-''';
-
-  static const String _dataSourcesEn = '''
-Watchloom plans to use TVMaze for television show, season, episode, image and schedule metadata.
-
-TVMaze attribution and the required source links will be included in the final application.
-
-User-created notes, watch progress, ratings, streaks and achievements belong to the local Watchloom database and are not supplied by TVMaze.
-
-Release dates are displayed only when the data provider has a known date. Watchloom will not invent an unknown release date.
-''';
-
-  static const String _dataSourcesTr = '''
-Watchloom; dizi, sezon, bölüm, görsel ve yayın takvimi verileri için TVMaze kullanmayı planlamaktadır.
-
-Nihai uygulamada gerekli TVMaze kaynak gösterimi ve bağlantıları bulunacaktır.
-
-Kullanıcının oluşturduğu notlar, izleme ilerlemesi, puanlar, seriler ve başarımlar Watchloom'un yerel veritabanına aittir ve TVMaze tarafından sağlanmaz.
-
-Yayın tarihleri yalnızca veri sağlayıcısında bilinen bir tarih bulunduğunda gösterilir. Watchloom bilinmeyen bir yayın tarihi üretmez.
-''';
-
   static const String _supportEn = '''
-Watchloom is currently in development.
+Watchloom support: https://canturhan.github.io/watchloom/support.html
 
 Before reporting a problem, note the screen where it occurred, the steps that caused it and the device or iOS version being used.
 
-A permanent support address and support website will be added before App Store publication.
+For purchase issues, include the message shown by the App Store. Never share your Apple Account password or payment details.
 ''';
 
   static const String _supportTr = '''
-Watchloom şu anda geliştirme aşamasındadır.
+Watchloom destek: https://canturhan.github.io/watchloom/support.html
 
 Bir sorun bildirirken sorunun görüldüğü ekranı, sorunu oluşturan adımları ve kullanılan cihaz veya iOS sürümünü not edin.
 
-Kalıcı destek e-posta adresi ve destek sitesi App Store yayını öncesinde eklenecektir.
+Satın alma sorunlarında App Store mesajını ekleyin. Apple Hesabı parolanızı veya ödeme bilgilerinizi paylaşmayın.
 ''';
 
   static const String _aboutEn = '''

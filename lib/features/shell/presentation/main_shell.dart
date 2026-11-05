@@ -1,4 +1,6 @@
 import 'package:watchloom/core/localization/app_settings_strings.dart';
+import 'package:watchloom/core/monetization/watchloom_banner.dart';
+import 'package:watchloom/core/monetization/ad_privacy_gate.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -293,48 +295,56 @@ class _MainShellState extends State<MainShell> {
       ProfilePage(localeController: widget.localeController),
     ];
 
-    return Scaffold(
-      body: IndexedStack(index: _selectedIndex, children: pages),
-      floatingActionButton: _buildFloatingActionButton(strings),
-      bottomNavigationBar: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          NavigationBar(
-            selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) {
-              setState(() {
-                _selectedIndex = index;
-              });
-            },
-            destinations: [
-              NavigationDestination(
-                icon: const Icon(Icons.home_outlined),
-                selectedIcon: const Icon(Icons.home_rounded),
-                label: strings.home,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.video_library_outlined),
-                selectedIcon: const Icon(Icons.video_library_rounded),
-                label: strings.library,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.explore_outlined),
-                selectedIcon: const Icon(Icons.explore_rounded),
-                label: strings.discover,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.calendar_month_outlined),
-                selectedIcon: const Icon(Icons.calendar_month_rounded),
-                label: strings.myMonth,
-              ),
-              NavigationDestination(
-                icon: const Icon(Icons.person_outline_rounded),
-                selectedIcon: const Icon(Icons.person_rounded),
-                label: strings.profile,
-              ),
-            ],
-          ),
-        ],
+    return AdPrivacyGate(
+      premium: scope.premiumController,
+      privacy: scope.adPrivacyController,
+      child: Scaffold(
+        body: IndexedStack(index: _selectedIndex, children: pages),
+        floatingActionButton: _buildFloatingActionButton(strings),
+        bottomNavigationBar: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            WatchloomBannerSlot(
+              controller: scope.premiumController,
+              privacyController: scope.adPrivacyController,
+            ),
+            NavigationBar(
+              selectedIndex: _selectedIndex,
+              onDestinationSelected: (index) {
+                setState(() {
+                  _selectedIndex = index;
+                });
+              },
+              destinations: [
+                NavigationDestination(
+                  icon: const Icon(Icons.home_outlined),
+                  selectedIcon: const Icon(Icons.home_rounded),
+                  label: strings.home,
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.video_library_outlined),
+                  selectedIcon: const Icon(Icons.video_library_rounded),
+                  label: strings.library,
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.explore_outlined),
+                  selectedIcon: const Icon(Icons.explore_rounded),
+                  label: strings.discover,
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.calendar_month_outlined),
+                  selectedIcon: const Icon(Icons.calendar_month_rounded),
+                  label: strings.myMonth,
+                ),
+                NavigationDestination(
+                  icon: const Icon(Icons.person_outline_rounded),
+                  selectedIcon: const Icon(Icons.person_rounded),
+                  label: strings.profile,
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
     );
   }

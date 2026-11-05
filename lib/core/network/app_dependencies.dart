@@ -1,4 +1,10 @@
 import 'package:dio/dio.dart';
+import 'dart:async';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:watchloom/core/monetization/ad_privacy_controller.dart';
+import 'package:watchloom/features/library/domain/library_access_policy.dart';
+import 'package:watchloom/features/premium/data/subscription_repository.dart';
+import 'package:watchloom/features/premium/presentation/subscription_controller.dart';
 import 'package:watchloom/core/database/watchloom_database.dart';
 import 'package:watchloom/features/activity/data/datasources/activity_local_data_source.dart';
 import 'package:watchloom/features/activity/data/repositories/sqlite_activity_repository.dart';
@@ -15,13 +21,25 @@ class AppDependencies {
     required this.showRepository,
     required this.libraryController,
     required this.activityController,
+    required this.premiumController,
+    required this.adPrivacyController,
   });
 
   final ShowRepository showRepository;
   final LibraryController libraryController;
   final WatchActivityController activityController;
+  final SubscriptionController premiumController;
+  final AdPrivacyController adPrivacyController;
 
   static Future<AppDependencies> create() async {
+    final adPrivacy = AdPrivacyController(
+      await SharedPreferences.getInstance(),
+    );
+    final premium = SubscriptionController(StoreKitSubscriptionRepository());
+    unawaited(premium.initialize());
+    final accessPolicy = LibraryAccessPolicy(
+      hasPremium: () => premium.hasAccess,
+    );
     final dio = Dio(
       BaseOptions(
         baseUrl: 'https://api.tvmaze.com',
@@ -30,7 +48,7 @@ class AppDependencies {
         receiveTimeout: const Duration(seconds: 15),
         headers: const {
           'Accept': 'application/json',
-          'User-Agent': 'Watchloom/0.1.0 Flutter iOS',
+          'User-Agent': 'Watchloom/1.1.0 Flutter iOS',
         },
       ),
     );
@@ -41,7 +59,10 @@ class AppDependencies {
     await watchloomDatabase.database;
 
     final libraryController = LibraryController(
-      SqliteLibraryRepository(LibraryLocalDataSource(watchloomDatabase)),
+      SqliteLibraryRepository(
+        LibraryLocalDataSource(watchloomDatabase, accessPolicy: accessPolicy),
+      ),
+      accessPolicy: accessPolicy,
     );
 
     await libraryController.load();
@@ -60,6 +81,8 @@ class AppDependencies {
       showRepository: showRepository,
       libraryController: libraryController,
       activityController: activityController,
+      premiumController: premium,
+      adPrivacyController: adPrivacy,
     );
   }
 }

@@ -4,6 +4,8 @@ import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_activity_strings.dart';
 import 'package:watchloom/core/localization/app_library_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
+import 'package:watchloom/core/localization/app_monetization_strings.dart';
+import 'package:watchloom/features/premium/presentation/premium_page.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/features/activity/presentation/controllers/watch_activity_controller.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
@@ -34,7 +36,10 @@ class _LibraryPageState extends State<LibraryPage> {
     return SafeArea(
       bottom: false,
       child: ListenableBuilder(
-        listenable: libraryController,
+        listenable: Listenable.merge([
+          libraryController,
+          scope.premiumController,
+        ]),
         builder: (context, child) {
           return ListenableBuilder(
             listenable: activityController,
@@ -69,12 +74,22 @@ class _LibraryPageState extends State<LibraryPage> {
                             ),
                           ),
                         ),
-                        Text(
-                          '${libraryController.entries.length}',
-                          style: const TextStyle(
-                            color: AppColors.accentSoft,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
+                        Flexible(
+                          child: TextButton(
+                            onPressed: () => PremiumPage.open(context),
+                            child: Text(
+                              scope.premiumController.hasAccess
+                                  ? '${libraryController.entries.length} · ∞'
+                                  : '${libraryController.entries.length} / 5',
+                              semanticsLabel: scope.premiumController.hasAccess
+                                  ? '${strings.premiumTitle}, ${libraryController.entries.length}'
+                                  : '${strings.freeLibraryUsage(libraryController.entries.length)}. ${strings.seePremium}',
+                              style: const TextStyle(
+                                color: AppColors.accentSoft,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
                           ),
                         ),
                       ],

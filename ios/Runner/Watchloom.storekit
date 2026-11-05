@@ -1,0 +1,50 @@
+{
+  "identifier": "57314C01",
+  "nonRenewingSubscriptions": [],
+  "products": [],
+  "settings": {
+    "_billingGracePeriodEnabled": true,
+    "_renewalBillingIssuesEnabled": false,
+    "_locale": "en_US",
+    "_storefront": "USA",
+    "_timeRate": 0
+  },
+  "subscriptionGroups": [
+    {
+      "id": "57314001",
+      "localizations": [],
+      "name": "Watchloom Premium",
+      "subscriptions": [
+        {
+          "adHocOffers": [],
+          "codeOffers": [],
+          "displayPrice": "0.99",
+          "familyShareable": false,
+          "groupNumber": 1,
+          "internalID": "57314C02",
+          "localizations": [
+            {
+              "description": "Unlimited saved shows and no banner ads.",
+              "displayName": "Watchloom Premium Monthly",
+              "locale": "en_US"
+            },
+            {
+              "description": "Sınırsız dizi kaydı ve reklamsız kullanım.",
+              "displayName": "Watchloom Premium Aylık",
+              "locale": "tr"
+            }
+          ],
+          "productID": "com.canturhan.watchloom.premium.monthly",
+          "recurringSubscriptionPeriod": "P1M",
+          "referenceName": "Watchloom Premium Monthly",
+          "subscriptionGroupID": "57314001",
+          "type": "RecurringSubscription"
+        }
+      ]
+    }
+  ],
+  "version": {
+    "major": 2,
+    "minor": 0
+  }
+}

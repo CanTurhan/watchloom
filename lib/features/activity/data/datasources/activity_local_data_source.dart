@@ -30,6 +30,14 @@ class ActivityLocalDataSource {
     final database = await _watchloomDatabase.database;
 
     return database.transaction((transaction) async {
+      final saved = await transaction.query(
+        'library_entries',
+        columns: ['show_id'],
+        where: 'show_id = ?',
+        whereArgs: [updatedLibraryEntry['show_id']],
+        limit: 1,
+      );
+      if (saved.isEmpty) return false;
       final existing = await transaction.query(
         'episode_watch_logs',
         columns: ['id'],
@@ -48,10 +56,20 @@ class ActivityLocalDataSource {
         conflictAlgorithm: ConflictAlgorithm.abort,
       );
 
-      await transaction.insert(
+      await transaction.update(
         'library_entries',
-        updatedLibraryEntry,
-        conflictAlgorithm: ConflictAlgorithm.replace,
+        {
+          for (final key in [
+            'status',
+            'last_season',
+            'last_episode',
+            'last_episode_id',
+            'updated_at',
+          ])
+            key: updatedLibraryEntry[key],
+        },
+        where: 'show_id = ?',
+        whereArgs: [updatedLibraryEntry['show_id']],
       );
 
       return true;
@@ -65,6 +83,14 @@ class ActivityLocalDataSource {
 
     return database.transaction((transaction) async {
       final showId = currentLibraryEntry['show_id'];
+      final saved = await transaction.query(
+        'library_entries',
+        columns: ['show_id'],
+        where: 'show_id = ?',
+        whereArgs: [showId],
+        limit: 1,
+      );
+      if (saved.isEmpty) return null;
 
       final logs = await transaction.query(
         'episode_watch_logs',
@@ -119,10 +145,20 @@ class ActivityLocalDataSource {
         whereArgs: [latest['id']],
       );
 
-      await transaction.insert(
+      await transaction.update(
         'library_entries',
-        updatedEntry,
-        conflictAlgorithm: ConflictAlgorithm.replace,
+        {
+          for (final key in [
+            'status',
+            'last_season',
+            'last_episode',
+            'last_episode_id',
+            'updated_at',
+          ])
+            key: updatedEntry[key],
+        },
+        where: 'show_id = ?',
+        whereArgs: [showId],
       );
 
       return latest;

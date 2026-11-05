@@ -3,8 +3,11 @@ import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_library_strings.dart';
 import 'package:watchloom/core/localization/app_show_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
+import 'package:watchloom/core/localization/app_monetization_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
+import 'package:watchloom/features/library/domain/library_access_policy.dart';
+import 'package:watchloom/features/premium/presentation/premium_page.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 
@@ -13,7 +16,13 @@ class LibraryEditSheet extends StatefulWidget {
 
   final TvShow show;
 
-  static Future<bool?> open(BuildContext context, TvShow show) {
+  static Future<bool?> open(BuildContext context, TvShow show) async {
+    final library = AppScope.of(context).libraryController;
+    if (library.findByShowId(show.id) == null && !library.canAddShow) {
+      await PremiumPage.open(context, libraryLimitReached: true);
+      if (!context.mounted || !library.canAddShow) return false;
+    }
+    if (!context.mounted) return false;
     return showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -217,6 +226,8 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
       lastSeason: selectedEpisode?.season,
       lastEpisode: selectedEpisode?.number,
       lastEpisodeId: selectedEpisode?.id,
+      isFavorite: existingEntry?.isFavorite ?? false,
+      personalNote: existingEntry?.personalNote ?? '',
       addedAt: existingEntry?.addedAt ?? now,
       updatedAt: now,
     );
@@ -229,6 +240,13 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
       }
 
       Navigator.of(context).pop(true);
+    } on LibraryLimitReached {
+      if (!mounted) return;
+      setState(() => _isSaving = false);
+      await PremiumPage.open(context, libraryLimitReached: true);
+      if (mounted && AppScope.of(context).libraryController.canAddShow) {
+        await _save();
+      }
     } catch (_) {
       if (!mounted) {
         return;
@@ -239,7 +257,7 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Library entry could not be saved.')),
+        SnackBar(content: Text(AppStrings.of(context).librarySaveFailed)),
       );
     }
   }

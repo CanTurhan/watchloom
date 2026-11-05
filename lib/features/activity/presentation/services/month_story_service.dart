@@ -42,6 +42,8 @@ class MonthStoryService {
     return SharePlus.instance.share(
       ShareParams(
         title: 'Watchloom',
+        text:
+            'Show metadata: https://www.tvmaze.com — CC BY-SA 4.0: https://creativecommons.org/licenses/by-sa/4.0/ (formatted by Watchloom).',
         subject: '${strings.monthName(now.month)} ${now.year}',
         files: [XFile(file.path, mimeType: 'image/png')],
         sharePositionOrigin: sharePositionOrigin,
@@ -139,15 +141,18 @@ class MonthStoryService {
 
     _drawText(
       canvas,
-      'Your shows, remembered.',
-      const Offset(650, 1835),
+      strings.isTurkish
+          ? 'Veri: tvmaze.com\nCC BY-SA 4.0 · düzenlendi\ncreativecommons.org/licenses/by-sa/4.0'
+          : 'Data: tvmaze.com\nCC BY-SA 4.0 · adapted\ncreativecommons.org/licenses/by-sa/4.0',
+      const Offset(650, 1825),
       354,
       const TextStyle(
         color: Color(0xFFB8AFFF),
-        fontSize: 23,
+        fontSize: 16,
         fontWeight: FontWeight.w700,
       ),
       textAlign: TextAlign.right,
+      maxLines: 3,
     );
 
     final picture = recorder.endRecording();

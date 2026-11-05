@@ -1,73 +1,118 @@
 import 'package:watchloom/core/localization/app_strings.dart';
 
 extension AppMonetizationStrings on AppStrings {
-  String get watchloomProTitle =>
-      value(en: 'Watchloom Pro', tr: 'Watchloom Pro');
-
-  String get watchloomProSubtitle => value(
-    en: 'Remove banner ads permanently.',
-    tr: 'Banner reklamları kalıcı olarak kaldır.',
+  String get premiumTitle => 'Watchloom Premium';
+  String get premiumHeadline =>
+      value(en: 'Make room for every story.', tr: 'Her hikâyeye yer aç.');
+  String get premiumSubtitle => value(
+    en: 'Your next favorite deserves a place in your library.',
+    tr: 'Sıradaki favorinin kütüphanende bir yeri olsun.',
   );
-
-  String get watchloomProDescription => value(
-    en: 'Upgrade once and enjoy Watchloom without banner ads. This is a permanent, non-subscription purchase.',
-    tr: 'Tek seferlik yükseltmeyle Watchloom’u banner reklamsız kullan. Bu kalıcı bir satın almadır ve abonelik değildir.',
+  String get unlimitedShows =>
+      value(en: 'An unlimited library', tr: 'Sınırsız dizi kütüphanesi');
+  String get unlimitedShowsBody => value(
+    en: 'Save and track as many shows as you like.',
+    tr: 'Dilediğin kadar dizi kaydet ve takip et.',
   );
-
-  String get watchloomProActive =>
-      value(en: 'Watchloom Pro is active', tr: 'Watchloom Pro aktif');
-
-  String get watchloomProActiveDescription => value(
-    en: 'Banner ads have been removed from this device.',
-    tr: 'Banner reklamları bu cihazdan kaldırıldı.',
+  String get noAds =>
+      value(en: 'An ad-free experience', tr: 'Reklamsız deneyim');
+  String get noAdsBody => value(
+    en: 'Enjoy Watchloom without banner ads.',
+    tr: 'Watchloom’u banner reklamlar olmadan kullan.',
   );
-
-  String buyWatchloomPro(String price) =>
-      value(en: 'Remove Ads · $price', tr: 'Reklamları Kaldır · $price');
-
+  String get freeFeaturesRemain => value(
+    en: 'Free includes 5 saved shows. Progress, reminders, notes, favorites and statistics stay available on both plans.',
+    tr: 'Ücretsiz planda 5 dizi kaydedebilirsin. İlerleme, hatırlatmalar, notlar, favoriler ve istatistikler her iki planda da açık.',
+  );
+  String get monthlyPlan =>
+      value(en: 'Monthly subscription', tr: 'Aylık abonelik');
+  String perMonth(String price) =>
+      value(en: '$price / month', tr: '$price / ay');
+  String subscribeMonthly(String price) =>
+      value(en: 'Subscribe · $price / month', tr: 'Abone Ol · $price / ay');
+  String get renewalTerms => value(
+    en: 'Payment is charged to your Apple Account at confirmation. Your subscription renews monthly unless cancelled at least 24 hours before the current period ends. Manage or cancel in your App Store account settings.',
+    tr: 'Ödeme, onayladığında Apple Hesabından alınır. Dönem bitiminden en az 24 saat önce iptal etmezsen aboneliğin her ay yenilenir. App Store hesap ayarlarından yönetebilir veya iptal edebilirsin.',
+  );
+  String get premiumActive =>
+      value(en: 'Premium is active', tr: 'Premium aktif');
+  String get premiumActiveBody => value(
+    en: 'Your library has no limit, and banner ads are removed.',
+    tr: 'Kütüphanende sınır yok ve banner reklamlar kaldırıldı.',
+  );
+  String accessThrough(String date) =>
+      value(en: 'Access through $date', tr: '$date tarihine kadar erişim');
+  String renewsOn(String date) =>
+      value(en: 'Renews on $date', tr: 'Yenilenme: $date');
+  String get manageSubscription =>
+      value(en: 'Manage Subscription', tr: 'Aboneliği Yönet');
   String get restorePurchases =>
       value(en: 'Restore Purchases', tr: 'Satın Alımları Geri Yükle');
-
-  String get purchaseStarted => value(
-    en: 'Complete the purchase in the App Store window.',
-    tr: 'Satın alma işlemini App Store penceresinde tamamla.',
+  String get privacyPolicy =>
+      value(en: 'Privacy Policy', tr: 'Gizlilik Politikası');
+  String get subscriptionTerms =>
+      value(en: 'Terms of Use (EULA)', tr: 'Kullanım Koşulları (EULA)');
+  String get storeLoading => value(
+    en: 'Getting the App Store price…',
+    tr: 'App Store fiyatı alınıyor…',
   );
-
-  String get purchaseUnavailable => value(
-    en: 'Watchloom Pro is not available from the App Store yet.',
-    tr: 'Watchloom Pro henüz App Store üzerinden kullanılamıyor.',
+  String get accessChecking => value(
+    en: 'Checking your subscription…',
+    tr: 'Aboneliğin kontrol ediliyor…',
   );
-
   String get storeUnavailable => value(
-    en: 'The App Store could not be reached.',
-    tr: 'App Store’a ulaşılamadı.',
+    en: 'The App Store price is unavailable. Check your connection and try again.',
+    tr: 'App Store fiyatı alınamadı. Bağlantını kontrol edip tekrar dene.',
   );
-
-  String get purchaseRestored => value(
-    en: 'Purchase restore request completed.',
-    tr: 'Satın alma geri yükleme isteği tamamlandı.',
+  String get accessCheckFailed => value(
+    en: 'Your subscription could not be verified. Try again or restore your purchases.',
+    tr: 'Aboneliğin doğrulanamadı. Tekrar dene veya satın alımlarını geri yükle.',
   );
-
+  String get retryStore => value(en: 'Try Again', tr: 'Tekrar Dene');
   String get purchaseFailed => value(
-    en: 'The purchase could not be completed.',
-    tr: 'Satın alma tamamlanamadı.',
+    en: 'The purchase could not be completed. Please try again.',
+    tr: 'Satın alma tamamlanamadı. Lütfen tekrar dene.',
   );
-
-  String get oneTimePurchase => value(
-    en: 'One-time purchase · No subscription',
-    tr: 'Tek seferlik satın alma · Abonelik yok',
+  String get purchasePending => value(
+    en: 'Your purchase is awaiting Apple’s approval. Premium will open when it is confirmed.',
+    tr: 'Satın alma Apple onayı bekliyor. Onaylandığında Premium açılacak.',
   );
-
-  String get privacyChoicesTitle =>
-      value(en: 'Ad Privacy Choices', tr: 'Reklam Gizlilik Tercihleri');
-
-  String get privacyChoicesSubtitle => value(
-    en: 'Review or change your advertising consent choices.',
-    tr: 'Reklam onayı tercihlerini görüntüle veya değiştir.',
+  String get purchaseRestored => value(
+    en: 'Your Premium subscription was restored.',
+    tr: 'Premium aboneliğin geri yüklendi.',
   );
-
-  String get privacyOptionsUnavailable => value(
-    en: 'Privacy choices are not required for this device.',
-    tr: 'Bu cihaz için ek gizlilik tercihi gerekmiyor.',
+  String get nothingToRestore => value(
+    en: 'No active Premium subscription was found for this Apple Account.',
+    tr: 'Bu Apple Hesabında aktif Premium aboneliği bulunamadı.',
   );
+  String get restoreFailed => value(
+    en: 'Purchases could not be restored. Please try again.',
+    tr: 'Satın alımlar geri yüklenemedi. Lütfen tekrar dene.',
+  );
+  String get linkFailed => value(
+    en: 'The page could not be opened. Please try again.',
+    tr: 'Sayfa açılamadı. Lütfen tekrar dene.',
+  );
+  String get iosPurchaseOnly => value(
+    en: 'Premium subscriptions are available in the iOS app.',
+    tr: 'Premium abonelik iOS uygulamasında kullanılabilir.',
+  );
+  String get libraryLimitTitle =>
+      value(en: 'Your free library is full', tr: 'Ücretsiz kütüphanen doldu');
+  String get libraryLimitBody => value(
+    en: 'Keep up to 5 shows for free, or go Premium for an unlimited library and no ads. You can also remove a show to make space.',
+    tr: 'Ücretsiz olarak 5 dizi saklayabilir veya sınırsız kütüphane ve reklamsız kullanım için Premium’a geçebilirsin. Yer açmak için bir dizi de kaldırabilirsin.',
+  );
+  String get existingLibrarySafe => value(
+    en: 'Your saved shows and watch history stay on this device if your subscription ends. Adding new shows requires Premium when your library has 5 or more shows.',
+    tr: 'Aboneliğin bittiğinde kayıtlı dizilerin ve izleme geçmişin cihazında kalır. Kütüphanende 5 veya daha fazla dizi varken yeni dizi eklemek için Premium gerekir.',
+  );
+  String freeLibraryUsage(int count) =>
+      value(en: '$count / 5 shows · Free', tr: '$count / 5 dizi · Ücretsiz');
+  String get seePremium => value(en: 'Explore Premium', tr: 'Premium’u Keşfet');
+  String get librarySaveFailed => value(
+    en: 'Your show could not be saved. Please try again.',
+    tr: 'Dizi kaydedilemedi. Lütfen tekrar dene.',
+  );
+  String get advertisement => value(en: 'Advertisement', tr: 'Reklam');
 }
