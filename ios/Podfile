@@ -1,6 +1,10 @@
 # StoreKit 2 purchase verification and the Mobile Ads SDK.
 platform :ios, '15.0'
 
+# Firebase's CocoaPods security backport removes compromised CA roots used by
+# Firestore. Keep the iOS 15-compatible 12.x SDK on the patched release.
+$FirebaseSDKVersion = '12.19.3'
+
 # CocoaPods analytics sends network stats synchronously affecting flutter build latency.
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
@@ -28,7 +32,9 @@ require File.expand_path(File.join('packages', 'flutter_tools', 'bin', 'podhelpe
 flutter_ios_podfile_setup
 
 target 'Runner' do
-  # use_frameworks!
+  # Firebase's Swift modules and Firestore's internal module require framework
+  # integration. Static linkage keeps dependencies inside the application.
+  use_frameworks! :linkage => :static
 
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
   target 'RunnerTests' do

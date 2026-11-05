@@ -50,3 +50,13 @@ app.*.map.json
 *.before_*
 *.before_library
 *.crashing_backup
+# Firebase backend dependencies and local/emulator credentials.
+**/node_modules/
+**/.runtimeconfig.json
+**/.env.local
+**/service-account*.json
+**/*firebase-adminsdk*.json
+**/AuthKey_*.p8
+.firebase/
+.firebase-ios-apps.tmp.json
+/GoogleService-Info.plist

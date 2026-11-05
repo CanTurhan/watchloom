@@ -1,10 +1,25 @@
 import 'package:path/path.dart' as path;
 import 'package:sqflite/sqflite.dart';
+import 'dart:convert';
+import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 
 class WatchloomDatabase {
+  WatchloomDatabase({this.userId});
+
+  /// The original database always remains the guest library. A session never
+  /// changes its owner, including writes that finish after signing out.
+  final String? userId;
+  final changes = ValueNotifier<int>(0);
+  static String fileNameFor(String? uid) => uid == null
+      ? 'watchloom.db'
+      : 'watchloom_account_${sha256.convert(utf8.encode(uid))}.db';
+  void didChange() => changes.value++;
   Database? _database;
+  bool _erased = false;
 
   Future<Database> get database async {
+    if (_erased) throw StateError('deleted-account-database');
     final existingDatabase = _database;
 
     if (existingDatabase != null) {
@@ -12,17 +27,18 @@ class WatchloomDatabase {
     }
 
     final databasesPath = await getDatabasesPath();
-    final databasePath = path.join(databasesPath, 'watchloom.db');
+    final databasePath = path.join(databasesPath, fileNameFor(userId));
 
     final openedDatabase = await openDatabase(
       databasePath,
-      version: 4,
+      version: 5,
       onConfigure: (database) async {
         await database.execute('PRAGMA foreign_keys = ON');
       },
       onCreate: (database, version) async {
         await _createLibraryTables(database);
         await _createActivityTables(database);
+        await _createBackupMetadata(database);
       },
       onUpgrade: (database, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -36,11 +52,21 @@ class WatchloomDatabase {
         if (oldVersion < 4) {
           await _ensureLibraryPersonalColumns(database);
         }
+        if (oldVersion < 5) await _createBackupMetadata(database);
       },
     );
 
     _database = openedDatabase;
     return openedDatabase;
+  }
+
+  Future<void> erase() async {
+    _erased = true;
+    await _database?.close();
+    _database = null;
+    await deleteDatabase(
+      path.join(await getDatabasesPath(), fileNameFor(userId)),
+    );
   }
 
   Future<void> _createLibraryTables(Database database) async {
@@ -179,6 +205,32 @@ class WatchloomDatabase {
         "ADD COLUMN personal_note "
         "TEXT NOT NULL DEFAULT ''",
       );
+    }
+  }
+
+  Future<void> _createBackupMetadata(Database database) async {
+    await database.execute('''
+      CREATE TABLE backup_state (
+        id INTEGER PRIMARY KEY CHECK(id = 1),
+        local_version INTEGER NOT NULL DEFAULT 0,
+        saved_version INTEGER NOT NULL DEFAULT 0,
+        remote_revision INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+    await database.execute('INSERT INTO backup_state(id) VALUES(1)');
+    for (final table in [
+      'library_entries',
+      'episode_watch_logs',
+      'unlocked_achievements',
+    ]) {
+      for (final operation in ['INSERT', 'UPDATE', 'DELETE']) {
+        await database.execute('''
+          CREATE TRIGGER backup_${table}_${operation.toLowerCase()}
+          AFTER $operation ON $table BEGIN
+            UPDATE backup_state SET local_version = local_version + 1 WHERE id = 1;
+          END
+        ''');
+      }
     }
   }
 }

@@ -6,6 +6,7 @@ import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/features/activity/domain/entities/achievement.dart';
 import 'package:watchloom/features/settings/presentation/settings_page.dart';
+import 'package:watchloom/features/account/presentation/account_page.dart';
 
 class ProfilePage extends StatelessWidget {
   const ProfilePage({required this.localeController, super.key});
@@ -61,6 +62,8 @@ class ProfilePage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
+              const AccountTile(),
+              const SizedBox(height: 12),
               Row(
                 children: [
                   Expanded(

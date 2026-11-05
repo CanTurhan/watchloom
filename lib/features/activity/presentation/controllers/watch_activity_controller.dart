@@ -59,6 +59,18 @@ class WatchActivityController extends ChangeNotifier {
   final ActivityRepository _repository;
   final LibraryController _libraryController;
   final ShowRepository _showRepository;
+  bool _disposed = false;
+
+  @override
+  void notifyListeners() {
+    if (!_disposed) super.notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    super.dispose();
+  }
 
   List<EpisodeWatchLog> _logs = const [];
   List<UnlockedAchievement> _unlockedAchievements = const [];

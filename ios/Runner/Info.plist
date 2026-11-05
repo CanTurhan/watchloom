@@ -984,5 +984,24 @@
 	</array>
 	<key>UIViewControllerBasedStatusBarAppearance</key>
 	<false/>
+	<key>FirebaseAnalyticsCollectionEnabled</key>
+	<false/>
+	<key>FIREBASE_ANALYTICS_COLLECTION_DEACTIVATED</key>
+	<true/>
+	<key>GIDClientID</key>
+	<string>157774090938-ilvcnrmb8s2dfmn8kdo3dmlj1jmcuoct.apps.googleusercontent.com</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>watchloom.firebase.google</string>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.157774090938-ilvcnrmb8s2dfmn8kdo3dmlj1jmcuoct</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

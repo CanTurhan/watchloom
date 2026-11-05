@@ -1,0 +1,118 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function owns(uid) {
+      return request.auth != null && request.auth.uid == uid;
+    }
+    function verified(uid) {
+      return owns(uid) && (request.auth.token.get('email_verified', false) == true
+        || request.auth.token.firebase.sign_in_provider in ['apple.com', 'google.com']);
+    }
+    function recent(uid) {
+      return owns(uid) && request.auth.token.auth_time is int
+        && timestamp.value(request.auth.token.auth_time * 1000) <= request.time + duration.value(30, 's')
+        && request.time < timestamp.value(request.auth.token.auth_time * 1000) + duration.value(5, 'm');
+    }
+    function active(uid) {
+      return verified(uid)
+        && !exists(/databases/$(database)/documents/deletionMarkers/$(uid))
+        && get(/databases/$(database)/documents/users/$(uid)).data.status == 'active';
+    }
+    function erasing(uid) {
+      return recent(uid)
+        && exists(/databases/$(database)/documents/deletionMarkers/$(uid))
+        && (!exists(/databases/$(database)/documents/users/$(uid))
+          || get(/databases/$(database)/documents/users/$(uid)).data.status == 'deleting');
+    }
+    function oldBackup(uid, backupId) {
+      return active(uid)
+        && backupId != get(/databases/$(database)/documents/users/$(uid)).data.activeBackupId
+        && backupId != get(/databases/$(database)/documents/users/$(uid)).data.previousBackupId
+        && get(/databases/$(database)/documents/users/$(uid)/backups/$(backupId)).data.createdAt
+          < request.time - duration.value(1, 'd');
+    }
+    match /users/{uid} {
+      allow get: if owns(uid);
+      allow list: if false;
+      allow create: if verified(uid)
+        && !exists(/databases/$(database)/documents/deletionMarkers/$(uid))
+        && request.resource.data.keys().hasOnly(['schema', 'status', 'revision', 'activeBackupId', 'previousBackupId', 'createdAt', 'updatedAt'])
+        && request.resource.data.schema == 1 && request.resource.data.status == 'active'
+        && request.resource.data.revision == 0 && request.resource.data.activeBackupId == null
+        && request.resource.data.previousBackupId == null
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time;
+      // Both transitions have narrow field allowlists. Firebase documents can
+      // never set a purchase entitlement or return a deleting account to active.
+      allow update: if (
+        active(uid)
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['revision', 'activeBackupId', 'previousBackupId', 'updatedAt'])
+        && request.resource.data.revision == resource.data.revision + 1
+        && request.resource.data.activeBackupId is string && request.resource.data.activeBackupId.size() == 36
+        && request.resource.data.previousBackupId == resource.data.activeBackupId
+        && request.resource.data.updatedAt == request.time
+        && get(/databases/$(database)/documents/users/$(uid)/backups/$(request.resource.data.activeBackupId)).data.complete == true
+      ) || (
+        recent(uid) && resource.data.status in ['active', 'deleting']
+        && request.resource.data.status == 'deleting'
+        && request.resource.data.deletionRequestedAt == request.time
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'deletionRequestedAt'])
+        && existsAfter(/databases/$(database)/documents/deletionMarkers/$(uid))
+      );
+      allow delete: if erasing(uid)
+        && getAfter(/databases/$(database)/documents/deletionMarkers/$(uid)).data.purgedAt == request.time;
+      match /backups/{backupId} {
+        allow read: if active(uid) || erasing(uid);
+        allow create: if active(uid) && backupId.size() == 36
+          && request.resource.data.keys().hasOnly(['schema', 'complete', 'chunks', 'bytes', 'sha256', 'createdAt'])
+          && request.resource.data.schema == 1 && request.resource.data.complete == false
+          && request.resource.data.chunks is int && request.resource.data.chunks >= 1 && request.resource.data.chunks <= 164
+          && request.resource.data.bytes is int && request.resource.data.bytes > 0 && request.resource.data.bytes <= 67108864
+          && request.resource.data.sha256 is string && request.resource.data.sha256.size() == 64
+          && request.resource.data.createdAt == request.time;
+        allow update: if active(uid) && resource.data.complete == false && request.resource.data.complete == true
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['complete']);
+        allow delete: if erasing(uid) || oldBackup(uid, backupId);
+        match /chunks/{chunkId} {
+          allow read: if active(uid) || erasing(uid);
+          allow create: if active(uid) && backupId.size() == 36
+            && chunkId.matches('^[0-9]{1,3}$') && int(chunkId) < 164
+            && get(/databases/$(database)/documents/users/$(uid)/backups/$(backupId)).data.complete == false
+            && request.resource.data.keys().hasOnly(['payload']) && request.resource.data.payload is bytes
+            && request.resource.data.payload.size() > 0 && request.resource.data.payload.size() <= 409600;
+          allow update: if false;
+          allow delete: if erasing(uid) || oldBackup(uid, backupId);
+        }
+      }
+    }
+    match /deletionMarkers/{uid} {
+      allow get: if owns(uid);
+      allow list: if false;
+      allow create: if recent(uid)
+        && request.resource.data.keys().hasOnly(['startedAt', 'nonce'])
+        && request.resource.data.startedAt == request.time
+        && request.resource.data.nonce is string && request.resource.data.nonce.size() == 44
+        && (!existsAfter(/databases/$(database)/documents/users/$(uid))
+          || getAfter(/databases/$(database)/documents/users/$(uid)).data.status == 'deleting');
+      allow update: if (
+        erasing(uid) && !existsAfter(/databases/$(database)/documents/users/$(uid))
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['purgedAt'])
+        && request.resource.data.purgedAt == request.time
+      ) || (
+        // After Auth deletion the app no longer has an authenticated user. The
+        // private random proof can only complete this already-erased marker.
+        !exists(/databases/$(database)/documents/users/$(uid))
+        && resource.data.purgedAt is timestamp && !('authDeletedAt' in resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['authDeletedAt', 'completionProof'])
+        && request.resource.data.completionProof == resource.data.nonce
+        && request.resource.data.authDeletedAt == request.time
+      );
+      // After all old ID tokens have expired, a known marker may be removed
+      // without signing back in. No anonymous reads/lists or user-data deletes.
+      allow delete: if resource.data.authDeletedAt is timestamp
+        && request.time > resource.data.authDeletedAt + duration.value(2, 'h')
+        && !exists(/databases/$(database)/documents/users/$(uid));
+    }
+    match /{document=**} { allow read, write: if false; }
+  }
+}

@@ -29,7 +29,7 @@ class ActivityLocalDataSource {
   }) async {
     final database = await _watchloomDatabase.database;
 
-    return database.transaction((transaction) async {
+    final result = await database.transaction((transaction) async {
       final saved = await transaction.query(
         'library_entries',
         columns: ['show_id'],
@@ -74,6 +74,8 @@ class ActivityLocalDataSource {
 
       return true;
     });
+    if (result) _watchloomDatabase.didChange();
+    return result;
   }
 
   Future<Map<String, Object?>?> undoLatestEpisode({
@@ -81,7 +83,7 @@ class ActivityLocalDataSource {
   }) async {
     final database = await _watchloomDatabase.database;
 
-    return database.transaction((transaction) async {
+    final result = await database.transaction((transaction) async {
       final showId = currentLibraryEntry['show_id'];
       final saved = await transaction.query(
         'library_entries',
@@ -163,6 +165,8 @@ class ActivityLocalDataSource {
 
       return latest;
     });
+    if (result != null) _watchloomDatabase.didChange();
+    return result;
   }
 
   Future<bool> unlockAchievement(Map<String, Object?> achievement) async {
@@ -174,6 +178,7 @@ class ActivityLocalDataSource {
       conflictAlgorithm: ConflictAlgorithm.ignore,
     );
 
+    _watchloomDatabase.didChange();
     return id != 0;
   }
 }

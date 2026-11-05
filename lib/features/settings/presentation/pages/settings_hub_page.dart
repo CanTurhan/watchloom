@@ -9,6 +9,7 @@ import 'package:watchloom/features/settings/presentation/legal_page.dart';
 import 'package:watchloom/core/localization/app_legal_strings.dart';
 import 'package:watchloom/features/settings/presentation/pages/ad_privacy_page.dart';
 import 'package:watchloom/features/settings/presentation/widgets/clear_local_data_tile.dart';
+import 'package:watchloom/features/account/presentation/account_page.dart';
 import 'package:watchloom/features/settings/presentation/pages/notification_settings_page.dart';
 
 class SettingsHubPage extends StatefulWidget {
@@ -42,6 +43,7 @@ class _SettingsHubPageState extends State<SettingsHubPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 12, 20, 36),
         children: [
+          const AccountTile(),
           Container(
             padding: const EdgeInsets.all(20),
             decoration: BoxDecoration(

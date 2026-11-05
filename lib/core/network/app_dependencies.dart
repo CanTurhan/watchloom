@@ -15,6 +15,8 @@ import 'package:watchloom/features/library/presentation/controllers/library_cont
 import 'package:watchloom/features/shows/data/datasources/tvmaze_remote_data_source.dart';
 import 'package:watchloom/features/shows/data/repositories/tvmaze_show_repository.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
+import 'package:watchloom/features/account/presentation/auth_controller.dart';
+import 'package:watchloom/features/account/presentation/account_session_controller.dart';
 
 class AppDependencies {
   const AppDependencies._({
@@ -23,6 +25,7 @@ class AppDependencies {
     required this.activityController,
     required this.premiumController,
     required this.adPrivacyController,
+    required this.accountSession,
   });
 
   final ShowRepository showRepository;
@@ -30,6 +33,7 @@ class AppDependencies {
   final WatchActivityController activityController;
   final SubscriptionController premiumController;
   final AdPrivacyController adPrivacyController;
+  final AccountSessionController accountSession;
 
   static Future<AppDependencies> create() async {
     final adPrivacy = AdPrivacyController(
@@ -77,12 +81,24 @@ class AppDependencies {
 
     await activityController.load();
 
+    final auth = await AuthController.create();
+    final accountSession = AccountSessionController(
+      auth: auth,
+      showRepository: showRepository,
+      accessPolicy: accessPolicy,
+      guestDatabase: watchloomDatabase,
+      library: libraryController,
+      activity: activityController,
+    );
+    await accountSession.initialize();
+
     return AppDependencies._(
       showRepository: showRepository,
       libraryController: libraryController,
       activityController: activityController,
       premiumController: premium,
       adPrivacyController: adPrivacy,
+      accountSession: accountSession,
     );
   }
 }

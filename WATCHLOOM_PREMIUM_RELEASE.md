@@ -1,6 +1,6 @@
 # Watchloom Premium — iOS hazırlığı
 
-Çalışma dalı: `version_1.1.0_5`. Kaynak sürümü: **1.1.0 (5)**.
+Güncel çalışma dalı: `feature/firebase-auth-sync`. Kaynak sürümü: **1.1.0 (6)**. Yayımlanmış `version_1.1.0_5` görüntüsü korunuyor. Yeni hesap özelliğinin kurulum ve doğrulaması için [FIREBASE_SETUP.md](FIREBASE_SETUP.md) izlenmeli.
 Bu dosya uygulanan değişikliklerle, mağazada ve cihazda henüz yapılmayan işleri ayırır.
 
 ## Ürün ve fiyat kararı
@@ -28,7 +28,7 @@ Apple başlangıçta ülkelere göre vergi/kur karşılıklarını sunar. Abonel
 - Premium: sınırsız kayıt/takip, banner reklamların kaldırılması.
 - Bölüm ilerlemesi, hatırlatmalar, notlar, favoriler, istatistikler ve paylaşım Free'de açık.
 - Mevcut 5'ten fazla kaydı olan kullanıcıların dizileri ve geçmişi korunur. Premium bitse de düzenleme/takip devam eder; yeni ekleme için sayı 5'in altına inmeli veya Premium aktif olmalı.
-- Kontrol hem kayıt akışında hem SQLite işlemi içinde yapılır; eşzamanlı eklemeler sınırı aşamaz. Veritabanı sürümü değişmedi.
+- Kontrol hem kayıt akışında hem SQLite işlemi içinde yapılır; eşzamanlı eklemeler sınırı aşamaz. Hesap özelliğinde schema 5 ile yedekleme revizyonları eklenir; eski misafir kayıtları korunur.
 - Premium ekranı Kütüphane, iki Ayarlar ekranı ve 6. diziyi ekleme akışından açılır. EN/TR metinler, aylık fiyat, otomatik yenileme açıklaması, geri yükleme, yönetim, gizlilik ve Apple EULA bağlantıları bulunur.
 - Erişim StoreKit 2'nin doğrulanmış işlemlerinden gelir. Fiyat alınamaması ücretsiz özellikleri kapatmaz; satın alma fiyat/doğrulama hazır olana kadar kapalıdır. Kart bilgileri uygulamaya gelmez.
 - Kullanıcı reklam izni vermeden, başlangıçta/erişim doğrulanırken, satın alma sırasında ve Premium aktifken reklam oluşturulmaz. Başka ekran açıldığında banner kaldırılır. Reklam yükleme hatası boş alan veya tekrar döngüsü oluşturmaz.
@@ -39,7 +39,7 @@ Apple başlangıçta ülkelere göre vergi/kur karşılıklarını sunar. Abonel
 
 ## Yerel kontroller
 
-5 Kasım 2026 kontrol sonucu: **33 Flutter testi ve 12 arşiv/IPA doğrulama testi geçti**; `flutter analyze` temiz. Yeni Swift satın alma köprüsü gerçek iOS SDK'sıyla typecheck kontrolünden geçti. iOS ayarları, SKU eşleşmesi, StoreKit fixture'ın uygulama kaynaklarına dahil edilmemesi ve reklam ağı kimlikleri kontrol edildi. Bunlar gerçek cihazdaki satın alma/reklam ve tam arşiv testlerinin yerine geçmez; aşağıdaki cihaz listesi henüz tamamlanmadı.
+5 Kasım 2026 güncel kontrolü: **51 Flutter, 21 Python ve 7 Node testi geçti**; kod analizi temiz. Sekiz Firebase Emulator kontrolü ve Spark Firestore dağıtımı normal Terminal’de geçti. Firebase iOS 12.19.3 güvenlik güncellemesiyle tam imzasız Release arşivi derlendi ve paket sürümleri doğrulandı. Bu sonuçlar gerçek cihazdaki sağlayıcı, satın alma/reklam ve imzalı dağıtım kontrollerinin yerine geçmez.
 
 ```bash
 cd /Users/canturhan/CodingSpace/watchloom
@@ -65,7 +65,7 @@ WATCHLOOM_TEST_RUNNER=lightweight bash scripts/release_ios.sh --check
 4. Subscription review screenshot için cihazdaki gerçek Premium ekranını kullan. Notlarda erişim yollarını ve Free/Premium farkını belirt. İlk aboneliği yeni uygulama sürümüyle ilişkilendirerek gönder. Deneme/intro offer açma.
 5. Paid Apps sözleşmesi, vergi/banka ve abonelik durumunu kontrol et. Metadata değişikliklerinin Sandbox'a yansıması zaman alabilir; fiyat hatası hemen kod hatası anlamına gelmez.
 6. Gizlilik sayfalarını `docs/` kaynağından yayımla; Premium'daki `https://canturhan.github.io/watchloom/privacy.html` bağlantısının güncel içerikle açıldığını kontrol et. Gizlilik/Support URL'lerini Connect'e ekle. Açıklamaya [Apple standart EULA](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/) bağlantısını ekle.
-7. **App Privacy** yanıtlarını reklam SDK'sı için güncelle. `Data Not Collected` yanıtını varsayma. Aşağıdaki SDK bulgularını gerçek arşivin Privacy Report'u ile birleştir. Reklamların bulunduğunu yaş derecelendirmesi sorularında da doğru belirt.
+7. **App Privacy** yanıtlarını Firebase hesap/bulut içeriği ve reklam SDK'sı için güncelle. `Data Not Collected` yanıtını varsayma. Aşağıdaki SDK bulgularını gerçek arşivin Privacy Report'u ile birleştir. Reklamların bulunduğunu yaş derecelendirmesi sorularında da doğru belirt.
 
 ### Gizlilik incelemesinin dayanağı
 
@@ -89,7 +89,7 @@ bash scripts/release_ios.sh --build-testflight
 
 Script önce eski IPA klasörünü `build/ios/previous-ipa.*` altında koruyarak çıkış yolundan ayırır; aynı build numaralı bir önceki dosyanın yanlışlıkla doğrulanmasını da önler. Yeni arşiv ve IPA'nın bundle/sürüm/build/minimum iOS bilgilerini mevcut kaynağa göre doğrular; yanlış metadata veya pakete eklenmiş `.storekit` varsa hata verir. IPA export hatasında eski IPA'yı yükleme. Xcode Organizer veya Transporter ile doğrulanmış build'i yükle.
 
-5 Kasım 2026 imzalı arşiv denemesi, Xcode'un çalışma alanını açamaması (`xcodebuild` error 66) nedeniyle tamamlanmadı. Foundation kaynak türü sorgusu macOS LaunchServices için `kLSDataUnavailableErr` (-10813) döndürdü; proje dosyası `xcodebuild -list -project` ile okunabildi. Bu durum çalışma alanı XML dosyasının eksik olduğu anlamına gelmiyor. Çalışma alanı dosyaları mevcut; yerel Xcode hesabını/sertifikalarını bozacak bir değişiklik yapılmadı. Alternatif olarak Pods ve Runner projeleri ayrı çalıştırılarak **tam imzasız Release arşivi başarıyla oluşturuldu**: `build/ios/archive/Runner.xcarchive`. Native bağımlılıkların iOS tabanı 15'e hizalandı ve Profile yapılandırma uyarısı giderildi. Sonraki IPA exportu bu oturumda Xcode hesabını/Distribution özel anahtarını/provisioning profilini göremediği için başarısız oldu; IPA oluşmadı. Bu arşiv TestFlight'a doğrudan yüklenebilir imzalı dağıtım değildir. Yukarıdaki komutu normal macOS Terminal'de çalıştırıp Xcode çıktısını kontrol etmek gerekiyor.
+Güncel teknik arşiv: `build/ios/archive/AuthSpark-SecurityPatch-Unsigned.xcarchive`, 1.1.0 (6), iOS 15.0, Firebase Core/Firestore 12.19.3. İmzasız entegrasyon kontrolüdür; TestFlight dağıtımı değildir. Apple kurulumu ve cihaz testlerinden sonra yukarıdaki imzalı komut normal macOS Terminal’de çalıştırılmalı. Yayın betiği kaynak/kurulu SDK eşleşmesini ve gerçek arşiv/IPA SDK sürümlerini denetleyerek eski SDK’lı dosyayı engeller.
 
 Connect'te kullanılacak EN/TR açıklama, ürün yerelleştirmeleri ve review notları: [APP_STORE_CONNECT_TEXTS.md](APP_STORE_CONNECT_TEXTS.md).
 
@@ -109,7 +109,7 @@ Hukuki/belge incelemesi ve yayımdan önce hesap sahibi tarafından doğrulanaca
 - [ ] Geri yükleme aynı Apple Hesabındaki aboneliği getiriyor; yerel kütüphaneyi bulut yedeğinden getirdiği izlenimi vermiyor.
 - [ ] Gizlilik/EULA ve Aboneliği Yönet bağlantıları gerçek cihazda açılıyor. VoiceOver, büyük yazı ve TR/EN ekranları kontrol edildi.
 
-QA'da test reklamı kullanıldıysa **Review öncesi yeni build numarasıyla** üretim reklamlı arşiv oluştur (örneğin QA 5, üretim 6; önce `pubspec.yaml` build numarasını güncelle):
+QA'da test reklamı kullanıldıysa **Review öncesi yeni build numarasıyla** üretim reklamlı arşiv oluştur (örneğin QA 6, üretim 7; önce `pubspec.yaml` build numarasını güncelle):
 
 ```bash
 bash scripts/release_ios.sh --build
@@ -119,7 +119,7 @@ Bu son build'i de TestFlight'ta açılış/Premium/reklam görünürlüğü bak�
 
 ## GitHub sürüm dalı ve TestFlight yükleme
 
-Sürüm dalı: `version_1.1.0_5`. Bu dalın oluşturulması `main` dalını veya web belgelerinin canlı yayımlanmasını değiştirmez.
+Yayımlanmış sürüm görüntüsü: `version_1.1.0_5`; yeni hesap değişiklikleri `feature/firebase-auth-sync` üzerinde. Sürüm dalının oluşturulması `main` dalını veya web belgelerinin canlı yayımlanmasını değiştirmez.
 
 İmzalı QA build oluşturup TestFlight için App Store Connect'e yüklemek:
 
@@ -128,3 +128,12 @@ bash scripts/release_ios.sh --upload-testflight
 ```
 
 Bu işlem App Review'e göndermez ve abonelik/fiyat ayarlarını değiştirmez. Yüklemenin tamamlanmasından sonra Apple'ın build'i işlemesi gerekir. Doğrulanmış bir arşivden dağıtımı yeniden denemek için `--upload-existing` kullanılabilir; arşiv mevcut kaynak sürümüyle eşleşmelidir.
+## Hesap özelliğinin yayın koşulu
+
+Firebase hesabı Premium hakkı vermez; StoreKit yetkilidir. Spark Firestore kuralları
+ve anonim erişim kontrolleri yayımlandı. Apple sağlayıcısı yapılandırıldı ve
+sunucudan tekrar okunarak ayar eşleşmesi doğrulandı. E-posta kaynağı/SPF kaydı
+hesap sahibi tarafından tamamlandı. Kullanıcı cihaz kontrollerini TestFlight QA
+üzerinden yapacak. İmzalı QA build'i bu amaçla yüklenebilir; gerçek cihazda
+hesap/yedek/silme/yeniden kurulum ve satın alma testleri, e-posta teslimi ve canlı
+yasal sayfalar doğrulanmadan üretim Review'e hazır sayılmaz. [Apple kurulumu](APPLE_SIGN_IN_SETUP.md).

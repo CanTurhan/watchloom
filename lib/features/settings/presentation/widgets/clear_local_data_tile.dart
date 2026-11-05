@@ -75,6 +75,9 @@ class _ClearLocalDataTileState extends State<ClearLocalDataTile> {
 
   @override
   Widget build(BuildContext context) {
+    if (AppScope.of(context).accountSession?.auth.user != null) {
+      return const SizedBox.shrink();
+    }
     final strings = AppStrings.of(context);
     return ListTile(
       leading: const Icon(

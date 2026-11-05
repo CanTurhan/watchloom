@@ -1,28 +1,27 @@
 import 'package:path/path.dart' as path;
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
-import 'package:sqflite/sqflite.dart';
+import 'package:watchloom/core/database/watchloom_database.dart';
 import 'package:watchloom/core/notifications/upcoming_episode_notification_service.dart';
 
 class LocalDataResetService {
-  const LocalDataResetService();
+  const LocalDataResetService({this.database});
+  final WatchloomDatabase? database;
 
   Future<void> clearAllWatchloomData() async {
     await UpcomingEpisodeNotificationService.instance.disable();
 
-    final databasesPath = await getDatabasesPath();
+    final ownerDatabase = database ?? WatchloomDatabase();
+    final db = await ownerDatabase.database;
 
-    final databasePath = path.join(databasesPath, 'watchloom.db');
-
-    final database = await openDatabase(databasePath);
-
-    await database.transaction((transaction) async {
+    await db.transaction((transaction) async {
       await transaction.delete('episode_watch_logs');
 
       await transaction.delete('unlocked_achievements');
 
       await transaction.delete('library_entries');
     });
+    ownerDatabase.didChange();
     await clearGeneratedShareImages(await getTemporaryDirectory());
   }
 

@@ -7,6 +7,7 @@ import re
 import sys
 import zipfile
 from pathlib import Path
+from check_ios_security import validate_bundles, verify_app
 
 
 def validate_info(info, label, version, build, minimum_os=None):
@@ -60,6 +61,7 @@ def verify(project, *, archive_only=False):
     )
     if any(apps[0].rglob("*.storekit")):
         raise ValueError("The archive contains a local StoreKit test configuration.")
+    verify_app(apps[0])
 
     # xcodebuild -exportArchive uploads this archive directly and re-signs it;
     # it never consumes build/ios/ipa. An older or missing IPA must not block a
@@ -84,6 +86,8 @@ def verify(project, *, archive_only=False):
         )
         if any(name.endswith(".storekit") for name in package.namelist()):
             raise ValueError("The IPA contains a local StoreKit test configuration.")
+        app_prefix = main_info[0].removesuffix('Info.plist')
+        validate_bundles(lambda relative: package.read(app_prefix + relative), 'IPA')
     print(f"Verified Watchloom {version} ({build}), iOS {minimum_os}: archive and IPA metadata match.")
     print(f"IPA: {ipas[0]}")
 

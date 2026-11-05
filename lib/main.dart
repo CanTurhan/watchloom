@@ -19,6 +19,7 @@ Future<void> main() async {
       activityController: dependencies.activityController,
       premiumController: dependencies.premiumController,
       adPrivacyController: dependencies.adPrivacyController,
+      accountSession: dependencies.accountSession,
     ),
   );
 }

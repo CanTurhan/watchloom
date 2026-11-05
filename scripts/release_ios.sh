@@ -24,6 +24,9 @@ upload_archive() {
 }
 
 if [[ "$release_action" == '--upload-existing' ]]; then
+  python3 scripts/check_firebase_release.py
+  python3 scripts/check_firestore_release.py
+  python3 scripts/check_ios_security.py
   python3 scripts/verify_ios_artifacts.py --archive-only
   upload_archive
   printf '\nUpload completed. App Store Connect will process the build for TestFlight.\n'
@@ -32,7 +35,8 @@ fi
 
 "$flutter_bin" pub get --offline
 "$flutter_bin" analyze --no-pub lib test
-python3 scripts/test_verify_ios_artifacts.py
+python3 -m unittest discover -s scripts -p 'test_*.py'
+node --test scripts/test_firebase_spark.cjs scripts/test_firebase_apple.cjs
 
 if [[ "${WATCHLOOM_TEST_RUNNER:-}" == 'lightweight' ]]; then
   # Flutter's lightweight runner does not need a localhost debugging socket.
@@ -52,9 +56,16 @@ else
 fi
 
 if [[ "$release_action" == '--check' ]]; then
+  python3 scripts/check_firebase_release.py
+  python3 scripts/check_firestore_release.py
+  python3 scripts/check_ios_security.py
   printf '\nChecks passed. No archive or upload was requested.\n'
   exit 0
 fi
+
+python3 scripts/check_firebase_release.py
+python3 scripts/check_firestore_release.py
+python3 scripts/check_ios_security.py
 
 # Preserve the previous export outside Flutter's output directory. A failed
 # export must never leave an older IPA available to the verification step,

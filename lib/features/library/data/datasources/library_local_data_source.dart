@@ -60,6 +60,7 @@ class LibraryLocalDataSource {
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     });
+    _watchloomDatabase.didChange();
   }
 
   Future<void> deleteEntry(int showId) async {
@@ -70,5 +71,6 @@ class LibraryLocalDataSource {
       where: 'show_id = ?',
       whereArgs: [showId],
     );
+    _watchloomDatabase.didChange();
   }
 }

@@ -11,6 +11,7 @@ import 'package:watchloom/core/legal/app_legal.dart';
 import 'package:watchloom/core/localization/app_legal_strings.dart';
 import 'package:watchloom/features/settings/presentation/pages/ad_privacy_page.dart';
 import 'package:watchloom/features/settings/presentation/widgets/clear_local_data_tile.dart';
+import 'package:watchloom/features/account/presentation/account_page.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({required this.localeController, super.key});
@@ -27,6 +28,7 @@ class SettingsPage extends StatelessWidget {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
+          const AccountTile(),
           ListenableBuilder(
             listenable: AppScope.of(context).premiumController,
             builder: (context, _) => Card(
@@ -154,8 +156,10 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          _SectionTitle(strings.localDataTitle),
-          const Card(child: ClearLocalDataTile()),
+          if (AppScope.of(context).accountSession?.auth.user == null) ...[
+            _SectionTitle(strings.localDataTitle),
+            const Card(child: ClearLocalDataTile()),
+          ],
         ],
       ),
     );

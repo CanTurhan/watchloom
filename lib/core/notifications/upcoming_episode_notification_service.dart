@@ -57,6 +57,7 @@ class UpcomingEpisodeNotificationService {
 
   bool _initialized = false;
   bool _syncing = false;
+  int _syncGeneration = 0;
   int? _pendingShowId;
 
   Stream<int> get showOpenRequests {
@@ -186,7 +187,9 @@ class UpcomingEpisodeNotificationService {
     );
   }
 
-  Future<void> disable() async {
+  Future<void> disable({bool preservePreference = false}) async {
+    _syncGeneration++;
+    _syncing = false;
     await initialize();
 
     final preferences = await SharedPreferences.getInstance();
@@ -203,7 +206,7 @@ class UpcomingEpisodeNotificationService {
 
     await _plugin.cancel(_testNotificationId);
 
-    await preferences.setBool(_enabledKey, false);
+    if (!preservePreference) await preferences.setBool(_enabledKey, false);
 
     await preferences.remove(_scheduledIdsKey);
   }
@@ -289,10 +292,12 @@ class UpcomingEpisodeNotificationService {
     }
 
     _syncing = true;
+    final generation = _syncGeneration;
 
     try {
       await initialize();
-      await _cancelPreviouslyScheduled();
+      if (generation != _syncGeneration) return 0;
+      await _cancelPreviouslyScheduled(generation);
 
       final selectedTiming = await reminderTiming;
 
@@ -308,8 +313,10 @@ class UpcomingEpisodeNotificationService {
       final scheduledIds = <String>[];
 
       for (final entry in eligibleEntries) {
+        if (generation != _syncGeneration) return 0;
         try {
           final nextEpisode = await _loadNextEpisode(entry.showId);
+          if (generation != _syncGeneration) return 0;
 
           if (nextEpisode == null) {
             continue;
@@ -347,6 +354,10 @@ class UpcomingEpisodeNotificationService {
             androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle,
             payload: 'show:${entry.showId}',
           );
+          if (generation != _syncGeneration) {
+            await _plugin.cancel(notificationId);
+            return 0;
+          }
 
           scheduledIds.add('$notificationId');
         } catch (_) {
@@ -355,12 +366,13 @@ class UpcomingEpisodeNotificationService {
       }
 
       final preferences = await SharedPreferences.getInstance();
+      if (generation != _syncGeneration) return 0;
 
       await preferences.setStringList(_scheduledIdsKey, scheduledIds);
 
       return scheduledIds.length;
     } finally {
-      _syncing = false;
+      if (generation == _syncGeneration) _syncing = false;
     }
   }
 
@@ -382,13 +394,14 @@ class UpcomingEpisodeNotificationService {
     );
   }
 
-  Future<void> _cancelPreviouslyScheduled() async {
+  Future<void> _cancelPreviouslyScheduled(int generation) async {
     final preferences = await SharedPreferences.getInstance();
 
     final oldIds =
         preferences.getStringList(_scheduledIdsKey) ?? const <String>[];
 
     for (final value in oldIds) {
+      if (generation != _syncGeneration) return;
       final id = int.tryParse(value);
 
       if (id != null) {
@@ -396,7 +409,9 @@ class UpcomingEpisodeNotificationService {
       }
     }
 
-    await preferences.remove(_scheduledIdsKey);
+    if (generation == _syncGeneration) {
+      await preferences.remove(_scheduledIdsKey);
+    }
   }
 
   DateTime? _calculateNotificationTime(

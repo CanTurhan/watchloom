@@ -9,6 +9,7 @@ import zipfile
 from pathlib import Path
 
 from verify_ios_artifacts import verify
+from check_ios_security import REQUIRED_PODS
 
 
 class ArtifactChecks(unittest.TestCase):
@@ -32,15 +33,22 @@ class ArtifactChecks(unittest.TestCase):
             plistlib.dumps({"ApplicationProperties": self.info})
         )
         (self.app / "Info.plist").write_bytes(plistlib.dumps(self.info))
+        for name, version in REQUIRED_PODS.items():
+            bundle = self.app / f'{name}_Privacy.bundle'
+            bundle.mkdir()
+            (bundle / 'Info.plist').write_bytes(plistlib.dumps({'CFBundleShortVersionString': version}))
         self.ipa = self.project / "build/ios/ipa/Watchloom.ipa"
         self.ipa.parent.mkdir(parents=True)
         self.write_ipa(self.info)
 
-    def write_ipa(self, info, storekit=False):
+    def write_ipa(self, info, storekit=False, firebase_versions=None):
         with zipfile.ZipFile(self.ipa, "w") as package:
             package.writestr("Payload/Runner.app/Info.plist", plistlib.dumps(info))
             if storekit:
                 package.writestr("Payload/Runner.app/Watchloom.storekit", "{}")
+            for name, version in (firebase_versions or REQUIRED_PODS).items():
+                package.writestr(f'Payload/Runner.app/{name}_Privacy.bundle/Info.plist',
+                                 plistlib.dumps({'CFBundleShortVersionString': version}))
 
     def test_matching_release_passes(self):
         with contextlib.redirect_stdout(io.StringIO()):
@@ -112,6 +120,22 @@ class ArtifactChecks(unittest.TestCase):
     def test_direct_upload_still_rejects_storekit_test_configuration(self):
         (self.app / "Watchloom.storekit").write_text("{}")
         with self.assertRaisesRegex(ValueError, "local StoreKit test configuration"):
+            verify(self.project, archive_only=True)
+
+    def test_direct_upload_rejects_an_archive_using_the_old_firestore_trust_store(self):
+        bundle = self.app / 'FirebaseFirestoreInternal_Privacy.bundle/Info.plist'
+        bundle.write_bytes(plistlib.dumps({'CFBundleShortVersionString': '12.6.0'}))
+        with self.assertRaisesRegex(ValueError, 'Archived app: FirebaseFirestoreInternal must be 12.19.3'):
+            verify(self.project, archive_only=True)
+
+    def test_new_archive_does_not_make_an_old_sdk_ipa_uploadable(self):
+        self.write_ipa(self.info, firebase_versions=dict(REQUIRED_PODS, FirebaseFirestoreInternal='12.6.0'))
+        with self.assertRaisesRegex(ValueError, 'IPA: FirebaseFirestoreInternal must be 12.19.3'):
+            verify(self.project)
+
+    def test_missing_sdk_bundle_blocks_upload(self):
+        (self.app / 'FirebaseCore_Privacy.bundle/Info.plist').unlink()
+        with self.assertRaisesRegex(ValueError, 'missing or invalid FirebaseCore_Privacy'):
             verify(self.project, archive_only=True)
 
 

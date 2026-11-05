@@ -57,6 +57,7 @@ class LegalPage extends StatelessWidget {
   }
 
   static List<LegalLink> privacyLinks(AppStrings strings) => [
+    const LegalLink('Google / Firebase', AppLegal.firebasePrivacy),
     LegalLink(strings.onlinePrivacy, AppLegal.privacy),
     LegalLink(strings.providerPrivacy, AppLegal.yandexPrivacy),
     LegalLink(strings.privacyRequest, AppLegal.contact),
