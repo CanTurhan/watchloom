@@ -12,7 +12,9 @@ async function providerFailure(response) {
   return upstreamDiagnostic(data, response.status);
 }
 export async function jsonFetch(url, options = {}) {
-  const response = await fetch(url, {...options, redirect: 'error', signal: AbortSignal.timeout(8000)});
+  // Workers rejects redirect:'error' during Request construction. Manual mode
+  // plus the non-2xx guard rejects redirects without forwarding credentials.
+  const response = await fetch(url, {...options, redirect: 'manual', signal: AbortSignal.timeout(8000)});
   if (!response.ok) throw new ServiceError(response.status === 429 ? 'temporarily_busy' : 'service_unavailable', 503,
     await providerFailure(response));
   const body = await limitedText(response, 256 * 1024);
@@ -119,7 +121,7 @@ function unfield(value) {
 export class Store {
   constructor(env) { this.env = env; this.prefix = `projects/${PROJECT}/databases/(default)/documents/`; this.url = `https://firestore.googleapis.com/v1/${this.prefix.slice(0, -1)}`; }
   async api(suffix, body, method = 'POST', missing = false) {
-    const response = await fetch(this.url + suffix, {method, redirect: 'error', signal: AbortSignal.timeout(8000),
+    const response = await fetch(this.url + suffix, {method, redirect: 'manual', signal: AbortSignal.timeout(8000),
       headers: {Authorization: `Bearer ${await googleToken(this.env)}`, 'Content-Type': 'application/json'},
       ...(body === undefined ? {} : {body: JSON.stringify(body)})});
     if (missing && response.status === 404) return null;

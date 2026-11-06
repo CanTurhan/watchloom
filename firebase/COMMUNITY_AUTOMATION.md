@@ -186,7 +186,7 @@ It then runs the complete release checks, builds the signed QA archive and uploa
 it to TestFlight. Any failure stops the sequence; the normal release check by
 itself still never enables a paused community.
 
-Both setup and release checks include nine synthetic scenarios executed by the
+Both setup and release checks include twelve synthetic scenarios executed by the
 pinned Wrangler dependency's `workerd` runtime. They exercise production setup,
 RSA key import/signing, stream/JSON processing, each provider failure, proof
 creation and owner-only diagnostics. Test keys are generated in memory and real
@@ -198,6 +198,15 @@ bash scripts/test_worker_runtime.sh
 
 These checks cover runtime behavior; they cannot prove live credentials, IAM,
 provider availability, Cloudflare platform quotas or production CPU usage.
+
+The live `google_oauth / OUTBOUND_NETWORK_ERROR` was reproduced by constructing
+an actual workerd Request before synthetic responses. Workers rejects
+`redirect: 'error'` before sending a request. Both provider JSON requests and
+Firestore requests now use `redirect: 'manual'` and reject non-2xx responses;
+credentials cannot follow a redirect. The original fixture skipped Request
+construction and missed this incompatibility. The corrected fixture failed
+before the fix and passed afterward, including OAuth/Firestore/OpenAI redirect
+rejection. See the [Cloudflare Request reference](https://developers.cloudflare.com/workers/runtime-apis/request/).
 
 ## Votes and ranking
 

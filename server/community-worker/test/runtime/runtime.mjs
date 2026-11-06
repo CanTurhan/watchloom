@@ -19,9 +19,14 @@ async function environment(valid) {
 async function scenario(failure, expectedCode, context) {
   const env = await environment(failure !== 'server_credentials' && failure !== 'unauthorized');
   let proofWritten = false, requests = 0, queries = 0;
-  globalThis.fetch = async target => {
-    const url = new URL(target); requests++;
+  globalThis.fetch = async (target, options) => {
+    // Exercise workerd's actual Request parser before synthetic network replies.
+    // Node accepts options that Cloudflare's Request implementation rejects.
+    const outgoing = new Request(target, options);
+    check(outgoing.redirect === 'manual', 'outbound redirects stay manual');
+    const url = new URL(outgoing.url); requests++;
     if (url.hostname === 'oauth2.googleapis.com') {
+      if (failure === 'oauth_redirect') return new Response('{}', {status: 302, headers: {Location: 'https://foreign.test/'}});
       if (failure === 'google_oauth') return json({error: 'invalid_grant', error_description: secretDetail}, 400);
       return json({access_token: 'synthetic-runtime-token', expires_in: 3600});
     }
@@ -32,6 +37,7 @@ async function scenario(failure, expectedCode, context) {
     if (url.hostname === 'firestore.googleapis.com') {
       if (url.pathname.endsWith(':runQuery')) {
         queries++;
+        if (failure === 'firestore_redirect') return new Response('{}', {status: 307, headers: {Location: 'https://foreign.test/'}});
         if ((failure === 'pending_index' && queries === 1) || (failure === 'ranking_index' && queries === 2)) {
           return json({error: {status: 'FAILED_PRECONDITION', message: 'Create index https://private.test/?key=' + secretDetail}}, 400);
         }
@@ -41,6 +47,7 @@ async function scenario(failure, expectedCode, context) {
       proofWritten = true; return json({});
     }
     if (url.hostname === 'api.openai.com') {
+      if (failure === 'openai_redirect') return new Response('{}', {status: 308, headers: {Location: 'https://foreign.test/'}});
       if (failure === 'openai_moderation') return json({error: {code: 'invalid_api_key', message: secretDetail}}, 401);
       const categories = {hate: false, harassment: false, sexual: false, violence: false, 'self-harm': false};
       const result = {flagged: false, categories, category_scores: Object.fromEntries(Object.keys(categories).map(k => [k, 0.001]))};
@@ -59,7 +66,8 @@ async function scenario(failure, expectedCode, context) {
     check(response.status === 401 && result.error === 'unauthorized' && !result.stage, 'owner-only details');
     check(requests === 0 && !proofWritten, 'no unauthenticated work');
   } else if (failure) {
-    check(response.status === 503 && result.ready === false && result.stage === failure && result.code === expectedCode, 'precise bounded failure');
+    const expectedStage = {oauth_redirect: 'google_oauth', firestore_redirect: 'pending_index', openai_redirect: 'openai_moderation'}[failure] || failure;
+    check(response.status === 503 && result.ready === false && result.stage === expectedStage && result.code === expectedCode, 'precise bounded failure');
     check(!proofWritten, 'no failure proof');
   } else check(response.status === 200 && result.ready === true && proofWritten, 'complete success proof');
   console.log(JSON.stringify({runtimeCase: failure || 'successful_setup', status: 'passed'}));
@@ -71,7 +79,8 @@ export default {
       for (const [failure, code] of [[null, null], ['server_credentials', 'CHECK_FAILED'],
         ['google_oauth', 'invalid_grant'], ['firebase_auth', 'PERMISSION_DENIED'],
         ['pending_index', 'INDEX_NOT_READY'], ['ranking_index', 'INDEX_NOT_READY'],
-        ['openai_moderation', 'invalid_api_key'], ['health_write', 'PERMISSION_DENIED'], ['unauthorized', null]]) {
+        ['openai_moderation', 'invalid_api_key'], ['health_write', 'PERMISSION_DENIED'], ['unauthorized', null],
+        ['oauth_redirect', 'UPSTREAM_HTTP_ERROR'], ['firestore_redirect', 'UPSTREAM_HTTP_ERROR'], ['openai_redirect', 'UPSTREAM_HTTP_ERROR']]) {
         await scenario(failure, code, context);
       }
     } finally {globalThis.fetch = original;}
