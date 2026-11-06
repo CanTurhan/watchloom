@@ -10,6 +10,7 @@ import {account, googleToken, lookupUser, Store, limitedText} from '../server/co
 import {ModerationService} from '../server/community-worker/src/moderation.mjs';
 const require = createRequire(import.meta.url);
 const {endpoint} = require('./configure_community_automation.cjs');
+const {verifyWorkerSetup} = require('./community_worker_client.cjs');
 const {safeProviderCode, safeNetworkCode} = require('./community_diagnostics.cjs');
 const emit = value => process.stdout.write(JSON.stringify(value) + '\n');
 let currentStage = 'private_configuration';
@@ -20,7 +21,11 @@ async function step(stage, action) {
   currentStage = stage; lastFailure = null;
   emit({stage, status: 'checking'});
   try { await action(); emit({stage, status: 'passed'}); return true; }
-  catch {
+  catch (error) {
+    if (stage === 'deployed_worker' && !lastFailure) {
+      lastFailure = {code: typeof error.code === 'string' && /^WORKER_[A-Z_]+$/.test(error.code)
+        ? error.code : safeNetworkCode(error), ...(Number.isInteger(error.status) ? {httpStatus: error.status} : {})};
+    }
     emit({stage, status: 'failed', ...(lastFailure || {code: 'INVALID_OR_UNEXPECTED_RESPONSE'})});
     return false;
   }
@@ -48,11 +53,7 @@ try {
     return response;
   };
   const remoteReady = await step('deployed_worker', async () => {
-    const response = await fetch(new URL('/v1/verify-setup', root), {method: 'POST', redirect: 'error',
-      headers: {'Content-Type': 'application/json', Authorization: `Bearer ${secrets.SETUP_TOKEN}`},
-      body: '{}', signal: AbortSignal.timeout(30000)});
-    if (!response.ok) throw new Error();
-    const data = JSON.parse(await limitedText(response, 64 * 1024));
+    const data = await verifyWorkerSetup(root, secrets.SETUP_TOKEN);
     if (data.ready !== true || data.project !== PROJECT || data.policyVersion !== POLICY || data.release !== RELEASE) throw new Error();
   });
   if (remoteReady) {

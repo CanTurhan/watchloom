@@ -6,6 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {check} = require('./check_firebase_spark.cjs');
 const {privateOptions, document, update} = require('./community_moderation.cjs');
+const {endpoint, verifyWorkerSetup} = require('./community_worker_client.cjs');
 const PROJECT = 'watchloom-canturhan';
 const POLICY = '2026-11-06-auto-v1';
 const SECRET = path.join(os.homedir(), '.config/watchloom/community/worker-secrets.json');
@@ -43,14 +44,6 @@ function migratedFields(data) {
     || data.upVotes < 0 || data.downVotes < 0 || data.upVotes > 1000000000 || data.downVotes > 1000000000
     || data.score !== data.upVotes - data.downVotes) throw new Error('Inconsistent existing scores. Migration stopped without resetting votes.');
   return data.scoreSchema === 1 ? {} : {scoreSchema: 1};
-}
-function endpoint(value) {
-  let url; try { url = new URL(value); } catch { throw new Error('Use the deployed HTTPS workers.dev root URL.'); }
-  if (url.protocol !== 'https:' || !/^[a-z0-9-]+\.[a-z0-9-]+\.workers\.dev$/.test(url.hostname)
-    || url.username || url.password || url.port || url.search || url.hash || url.pathname !== '/') {
-    throw new Error('Use the deployed HTTPS workers.dev root URL, without credentials, path or parameters.');
-  }
-  return url.href;
 }
 function assertReceipt() {
   const root = path.resolve(__dirname, '..');
@@ -178,12 +171,8 @@ async function run(args) {
   const sourceHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../firebase/firestore.rules'))).digest('hex');
   if (migration?.data.policyVersion !== POLICY || migration.data.rulesSha256 !== sourceHash) throw new Error('Run the verified migration before enabling automatic publication.');
   phase = 'live Worker, provider, IAM and index verification';
-  const response = await fetch(new URL('/v1/verify-setup', url), {method: 'POST', redirect: 'error',
-    headers: {Authorization: `Bearer ${secrets.SETUP_TOKEN}`, 'Content-Type': 'application/json'},
-    body: '{}', signal: AbortSignal.timeout(45000)});
-  if (!response.ok) throw new Error('Worker verification failed. Check deployed secrets, Google IAM, OpenAI access and index readiness. Posting was not enabled.');
-  const verified = await response.json();
-  if (!verified.ready || verified.project !== PROJECT || verified.policyVersion !== POLICY
+  const verified = await verifyWorkerSetup(url, secrets.SETUP_TOKEN);
+  if (verified.ready !== true || verified.project !== PROJECT || verified.policyVersion !== POLICY
     || verified.release !== 'automatic-community-v1') throw new Error('Worker identity/policy mismatch. Nothing enabled.');
   const health = document((await db.get(`${DB}/communityAutomation/health`, privateOptions())).body);
   if (!verifiedHealth(health?.data, url)) throw new Error('Worker health proof is missing, stale or mismatched.');
@@ -205,6 +194,8 @@ async function run(args) {
 module.exports = {endpoint, migratedFields, assertReceipt, verifiedHealth, automaticConfiguration};
 if (require.main === module) run(process.argv.slice(2)).catch(error => {
   const status = Number.isInteger(error.status) ? ` (HTTP ${error.status})` : '';
-  console.error(`Automation setup stopped during: ${phase}${status}. No completion verified; no credentials were printed.`);
+  const code = typeof error.code === 'string' && /^(?:WORKER_[A-Z_]+|EPROTO|ECONNRESET|ECONNABORTED|EPIPE|EAI_AGAIN|ENOTFOUND|ETIMEDOUT|CERT_HAS_EXPIRED|ERR_TLS_CERT_ALTNAME_INVALID)$/.test(error.code)
+    ? ` [${error.code}]` : '';
+  console.error(`Automation setup stopped during: ${phase}${status}${code}. No completion verified; no credentials were printed.`);
   process.exitCode = 1;
 });

@@ -139,6 +139,29 @@ not enable automatic mode, publish comments or manufacture a Worker health proof
 Passing dependencies from the owner's Mac does not prove the deployed Worker can
 reach them. Activation and release still require the protected live check.
 
+On the owner's Node 25.2.0/OpenSSL 3.6.3 runtime, native HTTPS and both curl
+probes returned the correct health response with HTTP 200 while fetch failed
+with a TLS record error; no proxy variables were present. The protected setup
+check therefore uses native HTTPS in both activation and release tooling.
+Certificate verification stays enabled, redirects are rejected, responses are
+limited to 64 KiB and identity/policy/release must match exactly. One transient
+connection/protocol retry is permitted within the same 45-second deadline;
+certificate, HTTP and invalid-response failures never retry or enable posting.
+The protected provider check and its fresh Firestore proof remain mandatory.
+
+After current rules/indexes, migration, the stable Worker and its three secrets
+have already been deployed, continue without redeploying them:
+
+```sh
+bash scripts/ship_testflight.sh --resume
+```
+
+This explicitly activates the already deployed automatic community only after
+the current rule/migration receipts and real provider/IAM/index health pass.
+It then runs the complete release checks, builds the signed QA archive and uploads
+it to TestFlight. Any failure stops the sequence; the normal release check by
+itself still never enables a paused community.
+
 ## Votes and ranking
 
 An approved comment has integer `upVotes`, `downVotes`, `score = upVotes-downVotes`

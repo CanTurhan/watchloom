@@ -35,6 +35,8 @@ function safeNetworkCode(error) {
   for (let i = 0; i < queue.length && i < 12; i++) {
     const value = queue[i];
     for (const code of [value?.code, value?.name]) if (allowed.has(code)) return code;
+    if (value?.reason === 'wrong version number'
+      || (typeof value?.message === 'string' && value.message.includes('tls_validate_record_header:wrong version number'))) return 'EPROTO';
     if (value?.cause) queue.push(value.cause);
     if (Array.isArray(value?.errors)) queue.push(...value.errors.slice(0, 4));
     if (value?.message === 'unexpected redirect') return 'REDIRECT_REJECTED';
