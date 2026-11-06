@@ -37,6 +37,10 @@ service cloud.firestore {
       let config = get(/databases/$(database)/documents/communityConfig/current).data;
       return config.enabled == true && config.moderationReady == true && config.rulesVersion == 1;
     }
+    function boundedList(maximum) {
+      return request.query.limit is int && request.query.limit > 0
+        && request.query.limit <= maximum;
+    }
     function moderator() {
       return request.auth != null && verified(request.auth.uid)
         && !exists(/databases/$(database)/documents/deletionMarkers/$(request.auth.uid))
@@ -135,7 +139,7 @@ service cloud.firestore {
     match /communityComments/{commentId} {
       allow get: if resource.data.status == 'approved' || moderator()
         || (owns(resource.data.authorUid) && (active(resource.data.authorUid) || erasing(resource.data.authorUid)));
-      allow list: if request.query.limit <= 50 && (resource.data.status == 'approved'
+      allow list: if boundedList(50) && (resource.data.status == 'approved'
         || moderator() || (owns(resource.data.authorUid) && (active(resource.data.authorUid) || erasing(resource.data.authorUid))));
       allow create: if request.auth != null && active(request.auth.uid) && communityReady()
         && commentId.matches('^[A-Za-z0-9]{20}$')
@@ -162,7 +166,7 @@ service cloud.firestore {
     }
     match /communityReports/{reportId} {
       allow get: if moderator();
-      allow list: if moderator() && request.query.limit <= 50;
+      allow list: if moderator() && boundedList(50);
       allow create: if request.auth != null && active(request.auth.uid)
         && reportId.matches('^[A-Za-z0-9]{20}$')
         && request.resource.data.keys().hasOnly(['commentId', 'reporterUid', 'reason', 'createdAt'])
@@ -187,7 +191,7 @@ service cloud.firestore {
     }
     match /communityBlocks/{uid}/authors/{blockedUid} {
       allow get: if owns(uid) && (active(uid) || erasing(uid));
-      allow list: if owns(uid) && (active(uid) || erasing(uid)) && request.query.limit <= 100;
+      allow list: if owns(uid) && (active(uid) || erasing(uid)) && boundedList(100);
       allow create: if active(uid) && blockedUid != uid && blockedUid.matches('^[A-Za-z0-9_-]{1,128}$')
         && request.resource.data.keys().hasOnly(['blockedUid', 'createdAt'])
         && request.resource.data.blockedUid == blockedUid && request.resource.data.createdAt == request.time

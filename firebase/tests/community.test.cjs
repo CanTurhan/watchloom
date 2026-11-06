@@ -119,14 +119,30 @@ test('Spark premoderated series community security rules', {timeout: 180000}, as
       await db.doc(`communityComments/${rootId}`).update({status: 'approved'});
       assert.equal((await read(`communityComments/${rootId}`)).status, 200);
     });
-    await t.test('bounded public queries cannot enumerate pending comments or entire private block lists', async () => {
+    await t.test('public and owner-only block queries require explicit bounded limits', async () => {
       const query = (where, limit = 50, token) => request(`${base}:runQuery`, {token,
         data: {structuredQuery: {from: [{collectionId: 'communityComments'}], ...(where ? {where} : {}), limit}}});
       assert.equal((await query()).status, 403);
       const approved = {fieldFilter: {field: {fieldPath: 'status'}, op: 'EQUAL', value: value('approved')}};
       assert.equal((await query(approved)).status, 200);
       assert.equal((await query(approved, 1000)).status, 403);
-      assert.equal((await read(`communityBlocks/${a.uid}/authors`, a.token)).status, 403);
+      assert.equal((await request(`${base}:runQuery`, {data: {structuredQuery: {
+        from: [{collectionId: 'communityComments'}], where: approved}}})).status, 403);
+      // REST ListDocuments is a paginated endpoint: its server-selected page
+      // limit is not an unbounded Firestore query. Exercise runQuery directly,
+      // as the app's SDK does, with seeded private data and explicit limits.
+      assert.equal((await write(`communityBlocks/${a.uid}/authors/${b.uid}`,
+        {blockedUid: b.uid}, a.token, {timestamps: ['createdAt']})).status, 200);
+      const blocks = (token, limit) => request(`${base}/communityBlocks/${a.uid}:runQuery`, {token,
+        data: {structuredQuery: {from: [{collectionId: 'authors'}], ...(limit === undefined ? {} : {limit})}}});
+      const ownPage = await blocks(a.token, 100);
+      assert.equal(ownPage.status, 200);
+      assert.ok(ownPage.json.some(row => row.document?.name.endsWith(`/authors/${b.uid}`)));
+      assert.equal((await blocks(a.token)).status, 403);
+      assert.equal((await blocks(a.token, 101)).status, 403);
+      assert.equal((await blocks(b.token, 100)).status, 403);
+      assert.equal((await blocks(undefined, 100)).status, 403);
+      assert.equal((await remove(`communityBlocks/${a.uid}/authors/${b.uid}`, a.token)).status, 200);
     });
     await t.test('atomic counters enforce cooldown, daily cap and no reset; unsafe raw REST text is denied', async () => {
       assert.equal((await post(a, id())).status, 403);
