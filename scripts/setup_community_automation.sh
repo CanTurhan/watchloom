@@ -27,22 +27,14 @@ watchloom_phase='legacy scores and consent migration'
 node scripts/configure_community_automation.cjs migrate
 watchloom_phase='Cloudflare Free Worker deployment'
 mkdir -p build/release-audit
-watchloom_deploy_log="$watchloom_root/build/release-audit/community-worker-deploy.log"
-if "${watchloom_wrangler[@]}" deploy --config server/community-worker/wrangler.jsonc > "$watchloom_deploy_log" 2>&1; then
-  cat "$watchloom_deploy_log"
-else
-  tail -n 25 "$watchloom_deploy_log" >&2
+watchloom_deploy_result="$(mktemp "$watchloom_root/build/release-audit/community-worker-deploy.XXXXXX")"
+# Keep stdin/stdout attached to the Terminal for first-account subdomain prompts.
+# Wrangler writes a separate machine-readable receipt; no console scraping.
+if ! WRANGLER_OUTPUT_FILE_PATH="$watchloom_deploy_result" \
+  "${watchloom_wrangler[@]}" deploy --config server/community-worker/wrangler.jsonc; then
   exit 1
 fi
-watchloom_endpoint="$(python3 - "$watchloom_deploy_log" <<'PY'
-from pathlib import Path
-import re, sys
-roots = set(re.findall(r'https://watchloom-community\.[a-z0-9-]+\.workers\.dev', Path(sys.argv[1]).read_text()))
-if len(roots) != 1:
-    raise SystemExit('Could not verify the deployed Watchloom worker URL; no activation attempted.')
-print(roots.pop() + '/')
-PY
-)"
+watchloom_endpoint="$(python3 scripts/read_worker_deployment.py "$watchloom_deploy_result")"
 watchloom_phase='encrypted server secret bindings'
 "${watchloom_wrangler[@]}" secret bulk "$HOME/.config/watchloom/community/worker-secrets.json" \
   --config server/community-worker/wrangler.jsonc

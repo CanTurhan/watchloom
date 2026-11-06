@@ -85,6 +85,16 @@ Cloudflare dashboard login and CLI OAuth authorization are separate. Complete th
 CLI browser Allow/Authorize flow and confirm `wrangler whoami` shows the intended
 Free account. Do not use a temporary preview account for production.
 
+On a new Cloudflare account, the first deployment asks to register an account
+workers.dev subdomain. Answer yes and enter an available name (for example,
+watchloom-canturhan); this is a one-time namespace registration. The setup script
+preserves the Terminal for those prompts and reads the resulting endpoint from
+Wrangler's separate structured deployment receipt. It never infers success from
+an error message or an old console URL. Initial subdomain DNS can take a few
+minutes to propagate before the protected health check succeeds.
+This uses [Wrangler's supported ND-JSON output](https://developers.cloudflare.com/changelog/post/2025-11-03-wrangler-output-file/)
+while preserving the CLI's interactive Terminal prompts.
+
 The deployment script runs server tests and the Auth/Firestore emulator suite,
 checks Spark billing remains unlinked, deploys current rules/indexes, provisions
 the dedicated IAM identity/key if missing, migrates legacy ranking fields without
