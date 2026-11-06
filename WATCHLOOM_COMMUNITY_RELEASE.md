@@ -1,4 +1,4 @@
-# Watchloom 1.2.0 (7) — community and viewing overview
+# Watchloom 1.2.0 (8) — community and viewing overview
 
 Delivery branch requested by the owner: `version_1.1.0_6`. Preserve original `ccafccd` before advancing it. Binary version is independent of the branch name; `1.1.0 (6)` was already submitted to Apple. This change is series-only. No movie catalog, movie counters or movie storage migration are included.
 
@@ -17,11 +17,11 @@ New comments and replies are pending until an authorized operator approves them.
 
 Provide own-comment deletion, spoilers, reporting, private blocks and a private support address. Account deletion must remove authored comments, private profile/handle, own block list and own report references before deleting Auth. Other authors' replies remain independently authored; a deleted parent must not retain the deleted author's label/body. A minimal random deleted UID can remain in another user's private suppression preference; the public policy explains administrative cleanup requests.
 
-Operate the moderation queue and reports regularly and handle urgent reports promptly. Keep publishing disabled until a real moderator UID is configured and the operator accepts that responsibility. Reporting/takedown must remain available when new publication is paused. No Blaze upgrade is part of this release.
+Operate the moderation queue and reports regularly and handle urgent reports promptly. Enable submission only after an authorized operator configures owner CLI moderation or a verified moderator UID and accepts that responsibility. Reporting/takedown remains available when new publication is paused. No Blaze upgrade is part of this release.
 
 An older v6 client cannot finish account deletion while a community profile exists. The updated app removes owned community records before deleting that profile and completing the existing cloud/Auth flow. This prevents the older deletion path from silently leaving new public content behind.
 
-Owner Terminal release entry point: `bash scripts/ship_testflight.sh`. It runs the full Auth/Firestore authorization tests and verified Spark deployment before the signed QA archive/upload, and stops on any failed phase. There is no skipped-security mode. Configure the verified operator UID through `scripts/community_moderation.cjs` as documented in `firebase/COMMUNITY_MODERATION.md`; public posting stays unavailable until that operation succeeds.
+Owner Terminal release entry point: `bash scripts/ship_testflight.sh`. It runs the full Auth/Firestore authorization tests and verified Spark deployment before the signed QA archive/upload, and stops on any failed phase. There is no skipped-security mode. Configure owner CLI moderation through `scripts/community_moderation.cjs` as documented in `firebase/COMMUNITY_MODERATION.md`; submission stays unavailable until that operation succeeds. When the deployed rule revision is unchanged and its tested deployment receipt is current, `bash scripts/release_ios.sh --upload-testflight` runs the source/release checks and signed QA archive/upload without another rule deployment.
 
 ## App Store Connect changes before App Review
 
@@ -33,9 +33,9 @@ Owner Terminal release entry point: `bash scripts/ship_testflight.sh`. It runs t
 
 ## Validation record
 
-Source validation on November 6, 2026: 108 Flutter tests, 25 Python tests and 15 Node tests passed; Dart analysis and whitespace checks clean. The visual harness generated phone/tablet-size previews including 320 px at 180% text, with zero reported Flutter layout/exception errors. Cached official Firestore compiler validated rules syntax/types and all 13 literal RE2 patterns.
+Source validation on November 6, 2026: 127 Flutter tests, 25 Python tests and 22 Node tests passed; Dart analysis and whitespace checks clean. The Flutter suite includes 19 live account-state cases covering Apple/Google/email trust resolution, verification refresh, sign-out/account switching, stale async results and draft disposal. The existing visual harness generated phone/tablet-size previews including 320 px at 180% text, with zero reported Flutter layout/exception errors. Cached official Firestore compiler validated rules syntax/types and all 13 literal RE2 patterns; these rules are unchanged by the build 8 UI/operator changes.
 
-Full Auth/Firestore emulator authorization tests could not bind localhost ports in the managed session (EPERM); these tests are not reported as passing. Firebase CLI reauthentication was completed by the owner, but Google API DNS/network access remains unavailable here (ENOTFOUND). New live rules/indexes/config, signed archive/upload, Apple sign-in and cross-user device tests remain unverified. The owner's release entry point enforces the missing emulator/deployment checks before upload. A source commit does not prove TestFlight processing or moderation operation.
+The full Auth/Firestore emulator authorization suite and rule deployment subsequently passed in the owner's Terminal. The local deployment receipt records success at 2026-11-06T06:04:55.321764+00:00; its rule hash matches the current source. The managed session cannot bind emulator ports (EPERM) or independently query Google APIs (ENOTFOUND), so remote results are identified as owner-run evidence. Apple/Google credential exchange, cross-user report/block/deletion behavior and App Store Connect processing still require device/console checks. A source commit does not prove TestFlight processing.
 
 ## Primary references
 
@@ -47,8 +47,14 @@ Full Auth/Firestore emulator authorization tests could not bind localhost ports 
 
 This record describes implementation and release checks. It does not certify compliance with every country's law or guarantee the absence of bugs.
 
-## Owner-run release follow-up
+## Provider-independent owner moderation
 
-The owner confirmed the QA upload command completed. App Store Connect processing and real-device behavior remain owner checks. The local deployment receipt records a successful emulator-tested rule deployment at 2026-11-06T06:04:55.321764+00:00; its rule hash matches the current source.
+The owner selected human approval before publication. All Apple, Google and verified email/password accounts share the same filtered, pending-only submission flow. Publisher moderation is configured with `node scripts/community_moderation.cjs init-owner --accept-moderation-responsibility`, using existing Google Cloud CLI/IAM access rather than requiring a matching app Auth email/UID. Optional UID-based moderator assignment remains available. Owner CLI mode does not give app users approval or private-report access. The operator helper rejects example UID placeholders before remote access and supports optional `init --email EMAIL` resolution to a unique existing, enabled and verified Auth UID. Neither initialization flow creates an app account.
 
-Moderator initialization was attempted with the literal `FIREBASE_UID` placeholder and therefore did not enable posting. The operator helper now rejects these example identifiers before remote access and supports owner-only `init --email EMAIL` resolution to a unique existing, enabled and verified Firebase Auth UID. No account is created and no email is stored as a role. Its updated Node suite passed 19 tests. This CLI-only change requires no new iOS build. Moderation activation remains pending a successful operator command and status verification.
+The owner confirmed `init-owner` completed and provided status showing configured/enabled/moderationReady=true, rulesVersion=1, operatorType=owner-cli and ownerCliModeration=true. Community submission is enabled according to that owner Terminal output; publication still requires explicit operator approval. The managed session has not independently reread remote configuration.
+
+Community pages now follow live account verification and provider changes, including email verification while the account screen covers the page. A UID change binds a new repository and clears the previous account's private identity, pending comments, block list and draft. Late results from a previous session cannot update the new session. These UI changes require build 8; the server activation itself already applies to the uploaded build 7 after reopening community.
+
+## Binary delivery
+
+The owner confirmed the QA upload command completed for 1.2.0 (7). Build 8 is a separate source revision for the live account-state fix above; its archive/upload completion must be recorded separately. App Store Connect processing and real-device behavior remain owner checks. TestFlight is not an App Review submission.

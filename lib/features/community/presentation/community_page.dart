@@ -21,6 +21,7 @@ class CommunityPage extends StatefulWidget {
     this.viewerUid,
     this.verified = false,
     this.auth,
+    this.repositoryForUser,
     super.key,
   });
   final String contentKey;
@@ -29,6 +30,10 @@ class CommunityPage extends StatefulWidget {
   final String? viewerUid;
   final bool verified;
   final AuthController? auth;
+
+  /// Each repository is bound to one UID. A live account change needs a new
+  /// instance; injected repositories without a factory fail closed instead.
+  final CommunityRepository? Function(String? uid)? repositoryForUser;
 
   static Future<void> open(
     BuildContext context, {
@@ -46,6 +51,7 @@ class CommunityPage extends StatefulWidget {
           viewerUid: auth?.user?.uid,
           verified: auth?.canBackup ?? false,
           auth: auth,
+          repositoryForUser: (_) => communityRepositoryFor(context),
         ),
       ),
     );
@@ -66,26 +72,135 @@ class _CommunityPageState extends State<CommunityPage> {
   bool _busy = false;
   String? _error;
   int _loadTicket = 0;
+  final _sessionRevision = ValueNotifier<int>(0);
+  CommunityRepository? _repository;
+  String? _repositoryUid;
+  String? _viewerUid;
+  bool _verified = false;
+  bool _disposed = false;
+
+  String? get _liveUid =>
+      widget.auth == null ? widget.viewerUid : widget.auth!.user?.uid;
+  bool get _liveVerified =>
+      _liveUid != null && (widget.auth?.canBackup ?? widget.verified);
+  bool get _canParticipate =>
+      _viewerUid != null &&
+      _verified &&
+      _repository != null &&
+      _repositoryUid == _viewerUid;
+  bool _currentSession(int revision) =>
+      mounted && !_disposed && _sessionRevision.value == revision;
 
   @override
   void initState() {
     super.initState();
+    _viewerUid = _liveUid;
+    _verified = _liveVerified;
+    _repository = widget.repository;
+    _repositoryUid = widget.viewerUid;
+    _bindRepository(suppliedBinding: true);
+    widget.auth?.addListener(_authChanged);
+    _load();
+  }
+
+  @override
+  void didUpdateWidget(covariant CommunityPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final authChanged = oldWidget.auth != widget.auth;
+    if (authChanged) {
+      oldWidget.auth?.removeListener(_authChanged);
+      widget.auth?.addListener(_authChanged);
+    }
+    final suppliedBinding = oldWidget.repository != widget.repository;
+    final snapshotChanged =
+        oldWidget.viewerUid != widget.viewerUid ||
+        oldWidget.verified != widget.verified;
+    final contentChanged = oldWidget.contentKey != widget.contentKey;
+    _refreshSession(
+      force:
+          authChanged || suppliedBinding || snapshotChanged || contentChanged,
+      suppliedBinding: suppliedBinding,
+      authControllerChanged: authChanged,
+      contentChanged: contentChanged,
+    );
+  }
+
+  @override
+  void dispose() {
+    _disposed = true;
+    _loadTicket++;
+    widget.auth?.removeListener(_authChanged);
+    _sessionRevision.dispose();
+    super.dispose();
+  }
+
+  void _bindRepository({
+    required bool suppliedBinding,
+    bool authControllerChanged = false,
+  }) {
+    if (suppliedBinding && widget.viewerUid == _viewerUid) {
+      _repository = widget.repository;
+      _repositoryUid = widget.viewerUid;
+      return;
+    }
+    if (widget.repositoryForUser != null) {
+      try {
+        _repository = widget.repositoryForUser!(_viewerUid);
+        _repositoryUid = _viewerUid;
+      } catch (_) {
+        _repository = null;
+      }
+    } else if (_repositoryUid != _viewerUid || authControllerChanged) {
+      _repository = null;
+    }
+  }
+
+  void _authChanged() => _refreshSession();
+
+  void _refreshSession({
+    bool force = false,
+    bool suppliedBinding = false,
+    bool authControllerChanged = false,
+    bool contentChanged = false,
+  }) {
+    if (_disposed) return;
+    final uid = _liveUid, verified = _liveVerified;
+    if (!force && uid == _viewerUid && verified == _verified) return;
+    _loadTicket++;
+    _viewerUid = uid;
+    _verified = verified;
+    _profile = null;
+    _pending = [];
+    _blocks = {};
+    _revealed.clear();
+    _busy = false;
+    _error = null;
+    if (contentChanged) {
+      _comments = [];
+      _availability = null;
+    }
+    _bindRepository(
+      suppliedBinding: suppliedBinding,
+      authControllerChanged: authControllerChanged,
+    );
+    _sessionRevision.value++;
     _load();
   }
 
   Future<void> _load() async {
-    final repository = widget.repository;
+    final repository = _repository;
     if (repository == null) {
       setState(() => _loading = false);
       return;
     }
     final ticket = ++_loadTicket;
+    final revision = _sessionRevision.value;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final owner = widget.viewerUid != null && widget.verified;
+      final owner = _canParticipate;
       final errors = <Object>[];
       Future<T?> request<T>(Future<T> Function() read) async {
         try {
@@ -106,7 +221,7 @@ class _CommunityPageState extends State<CommunityPage> {
           ),
         if (owner) request(repository.blockedUsers),
       ]);
-      if (!mounted || ticket != _loadTicket) return;
+      if (!_currentSession(revision) || ticket != _loadTicket) return;
       setState(() {
         _availability = results[0] as CommunityAvailability?;
         if (results[1] != null) {
@@ -130,34 +245,35 @@ class _CommunityPageState extends State<CommunityPage> {
         }
       });
     } catch (error) {
-      if (mounted && ticket == _loadTicket) {
+      if (_currentSession(revision) && ticket == _loadTicket) {
         setState(() => _error = CommunityStrings.of(context).failure(error));
       }
     } finally {
-      if (mounted && ticket == _loadTicket) setState(() => _loading = false);
+      if (_currentSession(revision) && ticket == _loadTicket) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<bool> _ensureIdentity({bool edit = false}) async {
-    if (!edit &&
-        widget.viewerUid != null &&
-        widget.verified &&
-        _profile != null) {
+    final revision = _sessionRevision.value;
+    if (!edit && _canParticipate && _profile != null) {
       return true;
     }
     final changed = await Navigator.of(context).push<bool>(
       MaterialPageRoute(
         builder: (_) => CommunityProfilePage(
-          repository: widget.repository,
-          viewerUid: widget.viewerUid,
-          verified: widget.verified,
+          repository: _repository,
+          viewerUid: _viewerUid,
+          verified: _verified,
           auth: widget.auth,
+          repositoryForUser: widget.repositoryForUser,
         ),
       ),
     );
     if (!mounted) return false;
     if (changed == true || edit) await _load();
-    return mounted && _profile != null && widget.verified;
+    return _currentSession(revision) && _profile != null && _canParticipate;
   }
 
   void _message(String value) {
@@ -168,7 +284,10 @@ class _CommunityPageState extends State<CommunityPage> {
   }
 
   Future<void> _compose([CommunityComment? parent]) async {
+    final revision = _sessionRevision.value;
     if (_busy || !await _ensureIdentity() || !mounted) return;
+    if (!_currentSession(revision) || !_canParticipate) return;
+    final repository = _repository!;
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -176,8 +295,20 @@ class _CommunityPageState extends State<CommunityPage> {
       builder: (_) => _CommentComposer(
         publicName: _profile!.publicName,
         parent: parent,
+        sessionRevision: _sessionRevision,
+        sessionCurrent: () =>
+            _currentSession(revision) &&
+            _canParticipate &&
+            identical(repository, _repository),
         submit: (body, spoiler) async {
-          await widget.repository!.post(
+          if (!_currentSession(revision) ||
+              !_canParticipate ||
+              !identical(repository, _repository)) {
+            throw const CommunityException(
+              CommunityFailure.verificationRequired,
+            );
+          }
+          await repository.post(
             contentKey: widget.contentKey,
             body: body,
             parentId: parent?.id,
@@ -186,7 +317,7 @@ class _CommunityPageState extends State<CommunityPage> {
         },
       ),
     );
-    if (result == true && mounted) {
+    if (result == true && mounted && _currentSession(revision)) {
       _message(CommunityStrings.of(context).sent);
       await _load();
     }
@@ -212,22 +343,24 @@ class _CommunityPageState extends State<CommunityPage> {
       false;
 
   Future<void> _delete(CommunityComment comment) async {
+    final revision = _sessionRevision.value;
     final s = CommunityStrings.of(context);
     if (_busy || !await _confirm(s.deleteConfirm, s.delete) || !mounted) return;
-    await _act(() => widget.repository!.deleteComment(comment.id), s.deleted);
+    if (!_currentSession(revision) || !_canParticipate) return;
+    await _act(() => _repository!.deleteComment(comment.id), s.deleted);
   }
 
   Future<void> _block(CommunityComment comment) async {
+    final revision = _sessionRevision.value;
     if (_busy || !await _ensureIdentity() || !mounted) return;
     final s = CommunityStrings.of(context);
     if (!await _confirm(s.blockConfirm, s.block) || !mounted) return;
-    await _act(
-      () => widget.repository!.blockUser(comment.authorUid),
-      s.blocked,
-    );
+    if (!_currentSession(revision) || !_canParticipate) return;
+    await _act(() => _repository!.blockUser(comment.authorUid), s.blocked);
   }
 
   Future<void> _report(CommunityComment comment) async {
+    final revision = _sessionRevision.value;
     if (_busy || !await _ensureIdentity() || !mounted) return;
     final s = CommunityStrings.of(context);
     final reason = await showModalBottomSheet<CommunityReportReason>(
@@ -256,24 +389,29 @@ class _CommunityPageState extends State<CommunityPage> {
       ),
     );
     if (reason == null || !mounted) return;
+    if (!_currentSession(revision) || !_canParticipate) return;
     await _act(
-      () => widget.repository!.report(commentId: comment.id, reason: reason),
+      () => _repository!.report(commentId: comment.id, reason: reason),
       s.reportSent,
     );
   }
 
   Future<void> _act(Future<void> Function() operation, String success) async {
+    if (!_canParticipate) return;
+    final revision = _sessionRevision.value;
     setState(() => _busy = true);
     try {
       await operation();
-      if (mounted) {
+      if (_currentSession(revision)) {
         _message(success);
         await _load();
       }
     } catch (error) {
-      if (mounted) _message(CommunityStrings.of(context).failure(error));
+      if (mounted && _currentSession(revision)) {
+        _message(CommunityStrings.of(context).failure(error));
+      }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_currentSession(revision)) setState(() => _busy = false);
     }
   }
 
@@ -368,8 +506,15 @@ class _CommunityPageState extends State<CommunityPage> {
               ),
             ),
             const SizedBox(height: 16),
-            if (widget.repository == null)
-              Text(s.unavailableDevice)
+            if (_repository == null)
+              Text(
+                widget.repository == null
+                    ? s.unavailableDevice
+                    : s.text(
+                        'Your account changed. Reopen community to continue safely.',
+                        'Hesabın değişti. Güvenle devam etmek için topluluğu yeniden aç.',
+                      ),
+              )
             else ...[
               if (_loading)
                 const Padding(
@@ -408,7 +553,7 @@ class _CommunityPageState extends State<CommunityPage> {
                   key: const ValueKey('community-write-comment'),
                   onPressed: _busy || _loading ? null : _compose,
                   icon: const Icon(Icons.edit_note_rounded),
-                  label: Text(widget.viewerUid == null ? s.signIn : s.write),
+                  label: Text(_viewerUid == null ? s.signIn : s.write),
                 ),
               if (_profile != null)
                 Padding(
@@ -490,7 +635,7 @@ class _CommunityPageState extends State<CommunityPage> {
   }
 
   Widget _commentCard(CommunityComment comment, CommunityStrings s) {
-    final own = comment.authorUid == widget.viewerUid;
+    final own = comment.authorUid == _viewerUid;
     final approved = comment.status == CommunityCommentStatus.approved;
     final hiddenSpoiler =
         approved && comment.isSpoiler && !_revealed.contains(comment.id);
@@ -633,11 +778,15 @@ class _CommentComposer extends StatefulWidget {
   const _CommentComposer({
     required this.publicName,
     required this.submit,
+    required this.sessionRevision,
+    required this.sessionCurrent,
     this.parent,
   });
   final String publicName;
   final CommunityComment? parent;
   final Future<void> Function(String body, bool spoiler) submit;
+  final Listenable sessionRevision;
+  final bool Function() sessionCurrent;
   @override
   State<_CommentComposer> createState() => _CommentComposerState();
 }
@@ -646,15 +795,35 @@ class _CommentComposerState extends State<_CommentComposer> {
   final _text = TextEditingController();
   bool _spoiler = false;
   bool _busy = false;
+  bool _cancelled = false;
   String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.sessionRevision.addListener(_sessionChanged);
+  }
+
+  void _sessionChanged() {
+    if (!mounted || widget.sessionCurrent() || _cancelled) return;
+    _text.clear();
+    setState(() => _cancelled = true);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && ModalRoute.of(context)?.isCurrent == true) {
+        Navigator.of(context).pop(false);
+      }
+    });
+  }
+
   @override
   void dispose() {
+    widget.sessionRevision.removeListener(_sessionChanged);
     _text.dispose();
     super.dispose();
   }
 
   Future<void> _send() async {
-    if (_busy) return;
+    if (_busy || _cancelled || !widget.sessionCurrent()) return;
     setState(() {
       _busy = true;
       _error = null;
@@ -662,9 +831,9 @@ class _CommentComposerState extends State<_CommentComposer> {
     try {
       final body = CommunityPolicy.body(_text.text);
       await widget.submit(body, _spoiler);
-      if (mounted) Navigator.pop(context, true);
+      if (mounted && widget.sessionCurrent()) Navigator.pop(context, true);
     } catch (error) {
-      if (mounted) {
+      if (mounted && widget.sessionCurrent()) {
         setState(() => _error = CommunityStrings.of(context).failure(error));
       }
     } finally {
@@ -675,6 +844,7 @@ class _CommentComposerState extends State<_CommentComposer> {
   @override
   Widget build(BuildContext context) {
     final s = CommunityStrings.of(context);
+    if (_cancelled || !widget.sessionCurrent()) return const SizedBox.shrink();
     return SafeArea(
       top: false,
       child: PopScope(

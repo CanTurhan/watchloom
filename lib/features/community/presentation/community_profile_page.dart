@@ -37,12 +37,14 @@ class CommunityProfilePage extends StatefulWidget {
     required this.viewerUid,
     required this.verified,
     this.auth,
+    this.repositoryForUser,
     super.key,
   });
   final CommunityRepository? repository;
   final String? viewerUid;
   final bool verified;
   final AuthController? auth;
+  final CommunityRepository? Function(String? uid)? repositoryForUser;
 
   static Future<bool?> open(BuildContext context) {
     final auth = AppScope.of(context).accountSession?.auth;
@@ -53,6 +55,7 @@ class CommunityProfilePage extends StatefulWidget {
           viewerUid: auth?.user?.uid,
           verified: auth?.canBackup ?? false,
           auth: auth,
+          repositoryForUser: (_) => communityRepositoryFor(context),
         ),
       ),
     );
@@ -73,24 +76,135 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
   bool _busy = false;
   bool _consent = false;
   String? _error;
+  CommunityRepository? _repository;
+  String? _repositoryUid;
+  String? _viewerUid;
+  bool _verified = false;
+  int _revision = 0;
+  int _loadTicket = 0;
+  bool _disposed = false;
+
+  String? get _liveUid =>
+      widget.auth == null ? widget.viewerUid : widget.auth!.user?.uid;
+  bool get _liveVerified =>
+      _liveUid != null && (widget.auth?.canBackup ?? widget.verified);
+  bool get _canParticipate =>
+      _viewerUid != null &&
+      _verified &&
+      _repository != null &&
+      _repositoryUid == _viewerUid;
+  bool _currentSession(int revision) =>
+      mounted && !_disposed && revision == _revision;
 
   @override
   void initState() {
     super.initState();
+    _viewerUid = _liveUid;
+    _verified = _liveVerified;
+    _repository = widget.repository;
+    _repositoryUid = widget.viewerUid;
+    _bindRepository(suppliedBinding: true);
+    widget.auth?.addListener(_authChanged);
     _load();
   }
 
   @override
+  void didUpdateWidget(covariant CommunityProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final authChanged = oldWidget.auth != widget.auth;
+    if (authChanged) {
+      oldWidget.auth?.removeListener(_authChanged);
+      widget.auth?.addListener(_authChanged);
+    }
+    final suppliedBinding = oldWidget.repository != widget.repository;
+    final snapshotChanged =
+        oldWidget.viewerUid != widget.viewerUid ||
+        oldWidget.verified != widget.verified;
+    _refreshSession(
+      force: authChanged || suppliedBinding || snapshotChanged,
+      suppliedBinding: suppliedBinding,
+      authControllerChanged: authChanged,
+    );
+  }
+
+  @override
   void dispose() {
+    _disposed = true;
+    _revision++;
+    _loadTicket++;
+    widget.auth?.removeListener(_authChanged);
     _handle.dispose();
     _nickname.dispose();
     super.dispose();
   }
 
+  void _bindRepository({
+    required bool suppliedBinding,
+    bool authControllerChanged = false,
+  }) {
+    if (suppliedBinding && widget.viewerUid == _viewerUid) {
+      _repository = widget.repository;
+      _repositoryUid = widget.viewerUid;
+      return;
+    }
+    if (widget.repositoryForUser != null) {
+      try {
+        _repository = widget.repositoryForUser!(_viewerUid);
+        _repositoryUid = _viewerUid;
+      } catch (_) {
+        _repository = null;
+      }
+    } else if (_repositoryUid != _viewerUid || authControllerChanged) {
+      _repository = null;
+    }
+  }
+
+  void _authChanged() => _refreshSession();
+
+  bool _refreshSession({
+    bool force = false,
+    bool suppliedBinding = false,
+    bool authControllerChanged = false,
+  }) {
+    if (_disposed) return false;
+    final uid = _liveUid, verified = _liveVerified;
+    if (!force && uid == _viewerUid && verified == _verified) return false;
+    _revision++;
+    _loadTicket++;
+    _viewerUid = uid;
+    _verified = verified;
+    _profile = null;
+    _blocks = {};
+    _handle.clear();
+    _nickname.clear();
+    _mode = CommunityDisplayMode.handle;
+    _consent = false;
+    _error = null;
+    _busy = false;
+    _bindRepository(
+      suppliedBinding: suppliedBinding,
+      authControllerChanged: authControllerChanged,
+    );
+    _load();
+    return true;
+  }
+
+  Future<void> _manageAccount() async {
+    final session = AppScope.of(context).accountSession;
+    if (session == null) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(builder: (_) => AccountPage(session: session)),
+    );
+    if (!mounted) return;
+    final changed = _refreshSession();
+    if (!changed && _canParticipate) await _load();
+  }
+
   Future<void> _load() async {
-    if (widget.repository == null ||
-        widget.viewerUid == null ||
-        !widget.verified) {
+    final repository = _repository;
+    final revision = _revision;
+    final ticket = ++_loadTicket;
+    if (!_canParticipate || repository == null) {
       setState(() => _loading = false);
       return;
     }
@@ -100,10 +214,10 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
     });
     try {
       final results = await Future.wait<Object?>([
-        widget.repository!.profile(),
-        widget.repository!.blockedUsers(),
+        repository.profile(),
+        repository.blockedUsers(),
       ]);
-      if (!mounted) return;
+      if (!_currentSession(revision) || ticket != _loadTicket) return;
       final profile = results[0] as CommunityProfile?;
       setState(() {
         _profile = profile;
@@ -113,17 +227,25 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
         _mode = profile?.displayMode ?? CommunityDisplayMode.handle;
       });
     } catch (error) {
-      if (mounted) {
+      if (_currentSession(revision) && ticket == _loadTicket) {
         setState(() => _error = CommunityStrings.of(context).failure(error));
       }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (_currentSession(revision) && ticket == _loadTicket) {
+        setState(() => _loading = false);
+      }
     }
   }
 
   Future<void> _save() async {
     final s = CommunityStrings.of(context);
-    if (_busy || !_form.currentState!.validate()) return;
+    final revision = _revision, repository = _repository;
+    if (_busy ||
+        !_canParticipate ||
+        repository == null ||
+        !(_form.currentState?.validate() ?? false)) {
+      return;
+    }
     if (!_consent) {
       setState(() => _error = s.acceptTerms);
       return;
@@ -139,34 +261,36 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
         nickname: _nickname.text,
         displayMode: _mode,
       );
-      await widget.repository!.saveProfile(
+      await repository.saveProfile(
         handle: _handle.text,
         nickname: _nickname.text,
         displayMode: _mode,
         acceptedTerms: true,
       );
-      if (mounted) Navigator.of(context).pop(true);
+      if (mounted && _currentSession(revision)) Navigator.of(context).pop(true);
     } catch (error) {
-      if (mounted) setState(() => _error = s.failure(error));
+      if (_currentSession(revision)) setState(() => _error = s.failure(error));
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_currentSession(revision)) setState(() => _busy = false);
     }
   }
 
   Future<void> _unblock(String uid) async {
+    final revision = _revision, repository = _repository;
+    if (!_canParticipate || repository == null) return;
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
-      await widget.repository!.unblockUser(uid);
-      if (mounted) setState(() => _blocks.remove(uid));
+      await repository.unblockUser(uid);
+      if (_currentSession(revision)) setState(() => _blocks.remove(uid));
     } catch (error) {
-      if (mounted) {
+      if (_currentSession(revision)) {
         setState(() => _error = CommunityStrings.of(context).failure(error));
       }
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (_currentSession(revision)) setState(() => _busy = false);
     }
   }
 
@@ -205,9 +329,16 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
                   ),
                 ),
                 const SizedBox(height: 24),
-                if (widget.repository == null)
-                  Text(s.unavailableDevice)
-                else if (widget.viewerUid == null)
+                if (_repository == null)
+                  Text(
+                    widget.repository == null
+                        ? s.unavailableDevice
+                        : s.text(
+                            'Your account changed. Reopen community to continue safely.',
+                            'Hesabın değişti. Güvenle devam etmek için topluluğu yeniden aç.',
+                          ),
+                  )
+                else if (_viewerUid == null)
                   FilledButton.icon(
                     onPressed: widget.auth == null
                         ? null
@@ -219,17 +350,11 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
                     icon: const Icon(Icons.login_rounded),
                     label: Text(s.signIn),
                   )
-                else if (!widget.verified) ...[
+                else if (!_verified) ...[
                   Text(s.verification),
                   const SizedBox(height: 16),
                   OutlinedButton(
-                    onPressed: () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => AccountPage(
-                          session: AppScope.of(context).accountSession!,
-                        ),
-                      ),
-                    ),
+                    onPressed: _manageAccount,
                     child: Text(s.manageAccount),
                   ),
                 ] else ...[

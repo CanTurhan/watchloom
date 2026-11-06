@@ -79,7 +79,7 @@ async function run(args, clients) {
   const [command = 'status', suppliedTarget] = args;
   let target = suppliedTarget;
   let accountEmail;
-  const commands = ['status', 'init', 'grant', 'revoke', 'set-primary', 'pause', 'resume', 'pending', 'reports', 'approve', 'reject', 'remove', 'resolve-report', 'maintenance', 'purge-deleted'];
+  const commands = ['status', 'init', 'init-owner', 'grant', 'revoke', 'set-primary', 'pause', 'resume', 'pending', 'reports', 'approve', 'reject', 'remove', 'resolve-report', 'maintenance', 'purge-deleted'];
   if (!commands.includes(command)) throw new Error('Unknown command. Run --help.');
   const emailIndex = args.indexOf('--email');
   if (emailIndex !== -1) {
@@ -92,7 +92,7 @@ async function run(args, clients) {
   }
   if (!accountEmail && ['init', 'grant', 'revoke', 'set-primary', 'purge-deleted'].includes(command)) validUid(target);
   if (['approve', 'reject', 'remove', 'resolve-report'].includes(command)) validId(target);
-  if (['init', 'resume', 'set-primary'].includes(command) && !args.includes('--accept-moderation-responsibility')) {
+  if (['init', 'init-owner', 'resume', 'set-primary'].includes(command) && !args.includes('--accept-moderation-responsibility')) {
     throw new Error('Read firebase/COMMUNITY_MODERATION.md and explicitly pass --accept-moderation-responsibility.');
   }
   const reasonIndex = args.indexOf('--reason');
@@ -147,9 +147,14 @@ async function run(args, clients) {
   }
   async function ready(token) {
     const config = (await get('communityConfig/current', token))?.data;
-    if (!config?.moderationReady || config.rulesVersion !== 1 || !config.primaryModeratorUid) {
+    if (!config?.moderationReady || config.rulesVersion !== 1) {
       throw new Error('Initialize a real moderator first. Nothing published.');
     }
+    // Only the owner CLI can write this configuration or approve content: the
+    // Google OAuth/IAM permission is enforced by Firestore for every request.
+    // An app Auth account is not required for that private operator workflow.
+    if (config.operatorType === 'owner-cli' && config.primaryModeratorUid === null) return config;
+    if (!config.primaryModeratorUid) throw new Error('Initialize a real moderator first. Nothing published.');
     const mod = (await get(`communityModerators/${validUid(config.primaryModeratorUid)}`, token))?.data;
     if (mod?.active !== true) throw new Error('Primary moderator is inactive. Nothing published.');
     await requireAuthUid(config.primaryModeratorUid);
@@ -176,10 +181,23 @@ async function run(args, clients) {
     const mod = config?.primaryModeratorUid ? (await get(`communityModerators/${validUid(config.primaryModeratorUid)}`))?.data : null;
     console.log(JSON.stringify({project: PROJECT, configured: !!config, enabled: config?.enabled === true,
       moderationReady: config?.moderationReady === true, rulesVersion: config?.rulesVersion || null,
-      primaryModeratorActive: mod?.active === true}, null, 2));
+      operatorType: config?.operatorType || (config?.primaryModeratorUid ? 'firebase-user' : null),
+      ...(config?.operatorType === 'owner-cli'
+        ? {ownerCliModeration: config.primaryModeratorUid === null}
+        : {primaryModeratorActive: mod?.active === true})}, null, 2));
     return;
   }
-  if (['init', 'grant', 'set-primary'].includes(command)) {
+  if (command === 'init-owner') {
+    await transaction(async token => {
+      if (await get('communityConfig/current', token)) {
+        throw new Error('Already initialized; inspect status and use resume or set-primary instead.');
+      }
+      await commit([update('communityConfig/current', {enabled: true, moderationReady: true,
+        rulesVersion: 1, operatorType: 'owner-cli', primaryModeratorUid: null,
+        acceptedPolicyVersion: POLICY}, {timestamps: ['updatedAt']}),
+      event('init-owner', 'owner-cli', 'ownerConfigured')], token);
+    });
+  } else if (['init', 'grant', 'set-primary'].includes(command)) {
     await requireAuthUid(target);
     await transaction(async token => {
       const previous = await get('communityConfig/current', token);
@@ -187,9 +205,9 @@ async function run(args, clients) {
       if (command === 'set-primary' && !previous) throw new Error('Initialize the community first.');
       const writes = [update(`communityModerators/${target}`, {active: true}, {timestamps: ['updatedAt']})];
       if (command === 'init') writes.push(update('communityConfig/current', {enabled: true, moderationReady: true,
-        rulesVersion: 1, primaryModeratorUid: target, acceptedPolicyVersion: POLICY}, {timestamps: ['updatedAt']}));
+        rulesVersion: 1, operatorType: 'firebase-user', primaryModeratorUid: target, acceptedPolicyVersion: POLICY}, {timestamps: ['updatedAt']}));
       if (command === 'set-primary') writes.push(update('communityConfig/current', {enabled: false,
-        moderationReady: true, primaryModeratorUid: target}, {patch: true, timestamps: ['updatedAt']}));
+        moderationReady: true, operatorType: 'firebase-user', primaryModeratorUid: target}, {patch: true, timestamps: ['updatedAt']}));
       writes.push(event(command, target, 'ownerConfigured'));
       await commit(writes, token);
     });
@@ -307,6 +325,7 @@ async function run(args, clients) {
 function help() {
   console.log(`Watchloom owner-only moderation (Spark, ${PROJECT})
   status
+  init-owner --accept-moderation-responsibility
   init FIREBASE_UID --accept-moderation-responsibility
   init --email YOUR_WATCHLOOM_EMAIL --accept-moderation-responsibility
   grant FIREBASE_UID | revoke FIREBASE_UID
@@ -319,6 +338,8 @@ function help() {
   resolve-report REPORT_ID --reason actioned|noViolation|duplicate
   maintenance
   purge-deleted DELETED_FIREBASE_UID
+init-owner uses the signed-in owner's Google CLI/IAM permissions; no Watchloom app UID/email is needed.
+All Apple, Google and verified email users can submit, and EVERY comment remains pending until owner approval.
 Read firebase/COMMUNITY_MODERATION.md before enabling posting. Approve only after reviewing BOTH public name and body.`);
 }
 module.exports = {run, validUid, validEmail, validId, verifiedAccount, safeToApprove, privateOptions, document, update};

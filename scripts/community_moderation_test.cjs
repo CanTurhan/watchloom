@@ -123,6 +123,53 @@ test('email input cannot bypass the canonical UID verification with a mismatched
   await assert.rejects(run(['init', '--email', 'owner@example.com', '--accept-moderation-responsibility'], fake), /No Watchloom account/);
   assert.equal(fake.commits, 0);
 });
+test('owner CLI initializes premoderation without requiring or creating an app Auth account', async () => quiet(async () => {
+  const fake = fakeClients();
+  fake.identity.post = async () => { throw new Error('App Auth lookup is not part of owner initialization'); };
+  await assert.rejects(run(['init-owner'], fake), /responsibility/);
+  assert.equal(fake.commits, 0);
+  await run(['init-owner', '--accept-moderation-responsibility'], fake);
+  const config = fake.docs.get(PREFIX + 'communityConfig/current').fields;
+  assert.equal(config.operatorType.stringValue, 'owner-cli');
+  assert.equal(config.primaryModeratorUid.nullValue, null);
+  assert.equal(config.enabled.booleanValue, true);
+  assert.equal(config.moderationReady.booleanValue, true);
+  assert.equal([...fake.docs.keys()].some(name => name.includes('communityModerators/')), false);
+  assert.equal(fake.users.size, 0);
+  await assert.rejects(run(['init-owner', '--accept-moderation-responsibility'], fake), /Already initialized/);
+  assert.equal(fake.commits, 1);
+}));
+test('owner-operated moderation supports pause/resume and still verifies comment authors before approval', async () => quiet(async () => {
+  const fake = fakeClients();
+  await run(['init-owner', '--accept-moderation-responsibility'], fake);
+  fake.seed(`communityComments/${ID}`, comment);
+  fake.seed('communityProfiles/authorUid', {acceptedPolicyVersion: '2026-11-05'});
+  fake.seed('users/authorUid', {status: 'active'});
+  await run(['pause'], fake);
+  await assert.rejects(run(['approve', ID, '--reason', 'acceptable'], fake), /paused/);
+  await run(['resume', '--accept-moderation-responsibility'], fake);
+  await assert.rejects(run(['approve', ID, '--reason', 'acceptable'], fake), /verified/);
+  assert.equal(fake.docs.get(PREFIX + `communityComments/${ID}`).fields.status.stringValue, 'pending');
+  fake.users.set('authorUid', {localId: 'authorUid', providerUserInfo: [{providerId: 'apple.com'}]});
+  await run(['approve', ID, '--reason', 'acceptable'], fake);
+  assert.equal(fake.docs.get(PREFIX + `communityComments/${ID}`).fields.status.stringValue, 'approved');
+}));
+test('switching owner CLI moderation to a Firebase moderator restores UID verification and revocation', async () => quiet(async () => {
+  const fake = fakeClients();
+  await run(['init-owner', '--accept-moderation-responsibility'], fake);
+  await assert.rejects(run(['set-primary', 'newModerator', '--accept-moderation-responsibility'], fake), /verified/);
+  fake.users.set('newModerator', {localId: 'newModerator', emailVerified: true});
+  await run(['set-primary', 'newModerator', '--accept-moderation-responsibility'], fake);
+  let config = fake.docs.get(PREFIX + 'communityConfig/current').fields;
+  assert.equal(config.operatorType.stringValue, 'firebase-user');
+  assert.equal(config.primaryModeratorUid.stringValue, 'newModerator');
+  assert.equal(config.enabled.booleanValue, false);
+  await run(['resume', '--accept-moderation-responsibility'], fake);
+  await run(['revoke', 'newModerator'], fake);
+  await assert.rejects(run(['resume', '--accept-moderation-responsibility'], fake), /Initialize/);
+  config = fake.docs.get(PREFIX + 'communityConfig/current').fields;
+  assert.equal(config.enabled.booleanValue, false);
+}));
 test('revoked primary moderator can be replaced and resumed without bypassing verification', async () => quiet(async () => {
   const fake = fakeClients();
   for (const uid of ['firstUid', 'replacementUid']) fake.users.set(uid, {localId: uid, emailVerified: true});

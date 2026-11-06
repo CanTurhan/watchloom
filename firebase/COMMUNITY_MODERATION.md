@@ -16,9 +16,11 @@ Films are outside this release.
    deployment receipt. Do not initialize moderation before the suite passes.
 2. Verify public privacy, terms/community guidelines and support/contact pages are
    available; review the App Store privacy answers and age/content rating.
-3. The owner signs in to Watchloom using an enabled, verified Firebase account.
-   Copy its **UID** from Firebase Console → Authentication. Never use an email,
-   editable nickname or a Google Cloud project number as the role identifier.
+3. The publisher signs in to the Firebase CLI using an authorized Google Cloud
+   account for this project. Owner-operated CLI moderation does not require a
+   separate Watchloom app account or a matching Apple/Google/email address.
+   Normal participants can use Apple, Google or a verified email/password account;
+   all use the same private profile, filter and pending-comment workflow.
 4. A real operator accepts responsibility for checking pending comments and
    reports daily, responding to harmful-content reports promptly (target within
    24 hours), and disabling posting while coverage is unavailable. This is an
@@ -26,11 +28,17 @@ Films are outside this release.
 5. In the owner's Mac Terminal, using the existing Firebase CLI owner login:
 
    ```sh
-   node scripts/community_moderation.cjs init FIREBASE_UID --accept-moderation-responsibility
+   node scripts/community_moderation.cjs init-owner --accept-moderation-responsibility
    node scripts/community_moderation.cjs status
    ```
 
-   You can also resolve your existing Watchloom account by its sign-in email:
+   `init-owner` uses the existing owner CLI OAuth/IAM permissions to atomically
+   create readiness configuration. It does not create a Firebase Auth account,
+   grant an app user administrative rights, or bypass pending-only submission.
+   Each moderation API operation still requires the owner’s Cloud IAM access.
+
+   Optionally, to assign an existing verified Watchloom app account as a moderator
+   instead, use its actual UID with `init FIREBASE_UID`, or resolve it by email:
 
    ```sh
    node scripts/community_moderation.cjs init --email YOUR_WATCHLOOM_EMAIL --accept-moderation-responsibility
@@ -43,8 +51,9 @@ Films are outside this release.
    Sign in to Watchloom first. Apple Hide My Email may require the Auth UID
    instead of your personal email address.
 
-   `init` verifies the UID against Firebase Authentication, then atomically creates
-   its server-managed role and the readiness configuration. The app cannot grant
+   The optional `init` account flow verifies the UID against Firebase
+   Authentication, then atomically creates its server-managed role and readiness
+   configuration. The default `init-owner` flow needs no app UID. The app cannot grant
    roles or enable itself. Nothing is automatically initialized by installation,
    account creation, deploy or client-side configuration. This script is pinned
    to `watchloom-canturhan` and refuses linked/active billing using the existing
@@ -76,14 +85,18 @@ comment can be edited directly by a client; a replacement is a new pending post.
 
 The CLI's owner IAM permissions authorize moderation, not a client role document.
 Role records identify accountable verified operators and allow private queue
-access in the security rules. Granting a UID does not grant Google Cloud IAM or
+access in the security rules when app-moderator mode is selected. Owner CLI mode
+keeps reports accessible only through authorized IAM operations. Granting a UID
+does not grant Google Cloud IAM or
 permission to run the CLI with another person's credentials. There is no app
 admin key, service-account JSON or OAuth token bundled in Watchloom. Do not print
 Firebase CLI debug logs during private operations. The helper suppresses API
 request/response body logging and prints no OAuth data.
 
 Approval rechecks the author's active root, current policy consent, Auth account,
-deletion marker, operational configuration and moderator identity. Reply approval
+deletion marker and operational configuration. In the optional app-moderator
+mode it also verifies the primary moderator's Auth identity; owner CLI mode
+requires Cloud IAM permission on every operation. Reply approval
 also rechecks the root and mutual block/deletion state; a block made while a reply
 was pending continues to prevent contact. Delete/reject harmful published content,
 resolve associated reports, and disable persistent abusive Firebase Auth accounts
@@ -160,8 +173,10 @@ account deletion does not wait for maintenance.
 ## Security and Spark limits
 
 Every client comment is `pending`. No client or moderator-authenticated app can
-set approval, change authorship, inject trust/Premium fields or read private
-reports. Owner moderation bypasses client rules via scoped existing CLI OAuth;
+set approval, change authorship or inject trust/Premium fields. Ordinary app
+accounts cannot read private reports; explicitly assigned moderator roles may
+read moderation data as allowed by the rules. Owner CLI initialization creates no
+such app role. Owner moderation bypasses client rules via scoped existing CLI OAuth;
 protect the owner Google account/IAM and use multi-factor authentication.
 
 Firestore uses request.time to enforce a 30-second comment cooldown and 20 posts
