@@ -1,6 +1,8 @@
 'use strict';
 // Owner-operated Spark moderation. OAuth is held only inside the official CLI;
-// no service-account key, token, user email or app-writable role is trusted.
+// no service-account key/token is bundled and app-writable roles are not trusted.
+// An owner-only email lookup resolves an existing Auth UID; verification and
+// persisted roles still use that UID, never an email supplied by an app client.
 const path = require('node:path');
 const crypto = require('node:crypto');
 const {check} = require('./check_firebase_spark.cjs');
@@ -12,8 +14,18 @@ function privateOptions(queryParams) {
   return {skipLog: {body: true, resBody: true, queryParams: true}, ...(queryParams ? {queryParams} : {})};
 }
 function validUid(uid) {
+  if (/^(?:FIREBASE_UID|NEW_FIREBASE_UID|DELETED_FIREBASE_UID|YOUR_FIREBASE_UID)$/i.test(uid || '')) {
+    throw new Error('FIREBASE_UID is a placeholder. Use your actual Watchloom Auth UID, or: init --email your-account-email --accept-moderation-responsibility');
+  }
   if (!/^[A-Za-z0-9_-]{1,128}$/.test(uid || '')) throw new Error('Use a Firebase Authentication UID, never an email address.');
   return uid;
+}
+function validEmail(email) {
+  const normalized = typeof email === 'string' ? email.trim().toLowerCase() : '';
+  if (normalized.length > 320 || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(normalized)) {
+    throw new Error('Use the email of an existing Watchloom account after --email. Sign in to the app first.');
+  }
+  return normalized;
 }
 function validId(id) {
   if (!/^[A-Za-z0-9]{20}$/.test(id || '')) throw new Error('A 20-character comment/report ID is required.');
@@ -64,10 +76,21 @@ function safeToApprove(data) {
     && (data.parentId === null || /^[A-Za-z0-9]{20}$/.test(data.parentId));
 }
 async function run(args, clients) {
-  const [command = 'status', target] = args;
+  const [command = 'status', suppliedTarget] = args;
+  let target = suppliedTarget;
+  let accountEmail;
   const commands = ['status', 'init', 'grant', 'revoke', 'set-primary', 'pause', 'resume', 'pending', 'reports', 'approve', 'reject', 'remove', 'resolve-report', 'maintenance', 'purge-deleted'];
   if (!commands.includes(command)) throw new Error('Unknown command. Run --help.');
-  if (['init', 'grant', 'revoke', 'set-primary', 'purge-deleted'].includes(command)) validUid(target);
+  const emailIndex = args.indexOf('--email');
+  if (emailIndex !== -1) {
+    if (!['init', 'grant', 'set-primary'].includes(command) || emailIndex !== 1 ||
+        args.indexOf('--email', emailIndex + 1) !== -1) {
+      throw new Error('Use either a UID or --email EMAIL, not both. Email lookup is only available for init, grant and set-primary.');
+    }
+    accountEmail = validEmail(args[emailIndex + 1]);
+    target = undefined;
+  }
+  if (!accountEmail && ['init', 'grant', 'revoke', 'set-primary', 'purge-deleted'].includes(command)) validUid(target);
   if (['approve', 'reject', 'remove', 'resolve-report'].includes(command)) validId(target);
   if (['init', 'resume', 'set-primary'].includes(command) && !args.includes('--accept-moderation-responsibility')) {
     throw new Error('Read firebase/COMMUNITY_MODERATION.md and explicitly pass --accept-moderation-responsibility.');
@@ -107,6 +130,20 @@ async function run(args, clients) {
     const users = (await identity.post(`/projects/${PROJECT}/accounts:lookup`, {localId: [validUid(uid)]}, privateOptions())).body.users;
     const user = users?.find(item => item.localId === uid);
     if (!verifiedAccount(user)) throw new Error('Moderator UID must exist, be enabled, and have a verified email or Apple/Google provider.');
+  }
+  if (accountEmail) {
+    const users = (await identity.post(`/projects/${PROJECT}/accounts:lookup`,
+      {email: [accountEmail]}, privateOptions())).body.users || [];
+    const matching = users.filter(user => typeof user.email === 'string' && user.email.toLowerCase() === accountEmail);
+    if (matching.length !== 1) {
+      throw new Error(matching.length === 0
+        ? 'No Watchloom account matches this email. Sign in to Watchloom with it first. If Apple hides your email, use the actual UID from Firebase Authentication instead.'
+        : 'More than one Auth account matches; select the exact UID from Firebase Authentication. Nothing was changed.');
+    }
+    if (!verifiedAccount(matching[0])) {
+      throw new Error('The Watchloom account must be enabled and verified. Verify its email or sign in with Apple/Google. Nothing was changed.');
+    }
+    target = validUid(matching[0].localId);
   }
   async function ready(token) {
     const config = (await get('communityConfig/current', token))?.data;
@@ -271,6 +308,7 @@ function help() {
   console.log(`Watchloom owner-only moderation (Spark, ${PROJECT})
   status
   init FIREBASE_UID --accept-moderation-responsibility
+  init --email YOUR_WATCHLOOM_EMAIL --accept-moderation-responsibility
   grant FIREBASE_UID | revoke FIREBASE_UID
   set-primary FIREBASE_UID --accept-moderation-responsibility
   pause | resume --accept-moderation-responsibility
@@ -283,7 +321,7 @@ function help() {
   purge-deleted DELETED_FIREBASE_UID
 Read firebase/COMMUNITY_MODERATION.md before enabling posting. Approve only after reviewing BOTH public name and body.`);
 }
-module.exports = {run, validUid, validId, verifiedAccount, safeToApprove, privateOptions, document, update};
+module.exports = {run, validUid, validEmail, validId, verifiedAccount, safeToApprove, privateOptions, document, update};
 if (require.main === module) {
   if (process.argv.includes('--help')) help();
   else run(process.argv.slice(2)).catch(error => {

@@ -1,7 +1,7 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {run, validUid, validId, verifiedAccount, safeToApprove, privateOptions, update} = require('./community_moderation.cjs');
+const {run, validUid, validEmail, validId, verifiedAccount, safeToApprove, privateOptions, update} = require('./community_moderation.cjs');
 const PREFIX = 'projects/watchloom-canturhan/databases/(default)/documents/';
 const ID = 'a'.repeat(20), PARENT = 'b'.repeat(20);
 const comment = {schema: 1, contentKey: 'tvmaze:show:123', contentKind: 'series', authorUid: 'authorUid',
@@ -44,7 +44,9 @@ function fakeClients() {
   const identity = {async post(url, body, options) {
     assertPrivate(options);
     assert.equal(url, '/projects/watchloom-canturhan/accounts:lookup');
-    return {body: {users: body.localId.map(uid => users.get(uid)).filter(Boolean)}};
+    return {body: {users: body.email
+      ? [...users.values()].filter(user => body.email.includes(user.email?.toLowerCase()))
+      : body.localId.map(uid => users.get(uid)).filter(Boolean)}};
   }};
   return {docs, users, seed, firestore, identity, get commits() { return commits; }};
 }
@@ -55,7 +57,7 @@ async function quiet(action) {
 }
 test('operator identifiers reject emails, path traversal and malformed content IDs', () => {
   assert.equal(validUid('firebase_UID-123'), 'firebase_UID-123');
-  for (const uid of ['', 'owner@example.com', 'uid/other', '..', 'x'.repeat(129)]) assert.throws(() => validUid(uid));
+  for (const uid of ['', 'owner@example.com', 'uid/other', '..', 'x'.repeat(129), 'FIREBASE_UID', 'NEW_FIREBASE_UID']) assert.throws(() => validUid(uid));
   assert.equal(validId(ID), ID);
   for (const id of ['short', '../documents/secrets', `${ID}/other`]) assert.throws(() => validId(id));
 });
@@ -78,6 +80,47 @@ test('init fails without explicit moderation responsibility or a real verified U
   const fake = fakeClients();
   await assert.rejects(run(['init', 'ownerUid'], fake), /responsibility/);
   await assert.rejects(run(['init', 'ownerUid', '--accept-moderation-responsibility'], fake), /verified/);
+  assert.equal(fake.commits, 0);
+});
+test('placeholder and malformed/ambiguous email arguments fail before remote access', async () => {
+  assert.equal(validEmail(' Owner@Example.com '), 'owner@example.com');
+  for (const email of ['', 'owner', 'owner@example.com\nother@example.com', '--accept-moderation-responsibility']) {
+    assert.throws(() => validEmail(email));
+  }
+  const fake = fakeClients();
+  await assert.rejects(run(['init', 'FIREBASE_UID', '--accept-moderation-responsibility'], fake), /placeholder/);
+  await assert.rejects(run(['init', '--email', '--accept-moderation-responsibility'], fake), /email/);
+  await assert.rejects(run(['init', 'ownerUid', '--email', 'owner@example.com', '--accept-moderation-responsibility'], fake), /either a UID/);
+  await assert.rejects(run(['init', '--email', 'owner@example.com'], fake), /responsibility/);
+  assert.equal(fake.commits, 0);
+});
+test('owner email lookup grants only a uniquely resolved verified Auth UID and persists no email', async () => quiet(async () => {
+  const fake = fakeClients();
+  const email = 'owner@example.com';
+  fake.users.set('resolvedUid', {localId: 'resolvedUid', email, emailVerified: true});
+  await run(['init', '--email', 'Owner@Example.com', '--accept-moderation-responsibility'], fake);
+  const config = fake.docs.get(PREFIX + 'communityConfig/current');
+  assert.equal(config.fields.primaryModeratorUid.stringValue, 'resolvedUid');
+  assert.equal(config.fields.enabled.booleanValue, true);
+  assert.equal(fake.docs.get(PREFIX + 'communityModerators/resolvedUid').fields.active.booleanValue, true);
+  assert.equal(JSON.stringify([...fake.docs.values()]).includes(email), false);
+}));
+test('missing, duplicate, unverified and disabled email matches cannot initialize moderation', async () => {
+  for (const accounts of [[], [{localId: 'uidA', emailVerified: false}],
+    [{localId: 'uidA', emailVerified: true, disabled: true}],
+    [{localId: 'uidA', emailVerified: true}, {localId: 'uidB', emailVerified: true}]]) {
+    const fake = fakeClients();
+    for (const account of accounts) fake.users.set(account.localId, {...account, email: 'owner@example.com'});
+    await assert.rejects(run(['init', '--email', 'owner@example.com', '--accept-moderation-responsibility'], fake),
+      /No Watchloom account|More than one|enabled and verified/);
+    assert.equal(fake.commits, 0);
+  }
+});
+test('email input cannot bypass the canonical UID verification with a mismatched lookup response', async () => {
+  const fake = fakeClients();
+  fake.identity.post = async (_, body) => ({body: {users: body.email
+    ? [{localId: 'resolvedUid', email: 'other@example.com', emailVerified: true}] : []}});
+  await assert.rejects(run(['init', '--email', 'owner@example.com', '--accept-moderation-responsibility'], fake), /No Watchloom account/);
   assert.equal(fake.commits, 0);
 });
 test('revoked primary moderator can be replaced and resumed without bypassing verification', async () => quiet(async () => {

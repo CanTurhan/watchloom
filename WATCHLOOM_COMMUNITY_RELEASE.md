@@ -46,3 +46,9 @@ Full Auth/Firestore emulator authorization tests could not bind localhost ports 
 - [Firestore security rules conditions](https://firebase.google.com/docs/firestore/security/rules-conditions)
 
 This record describes implementation and release checks. It does not certify compliance with every country's law or guarantee the absence of bugs.
+
+## Owner-run release follow-up
+
+The owner confirmed the QA upload command completed. App Store Connect processing and real-device behavior remain owner checks. The local deployment receipt records a successful emulator-tested rule deployment at 2026-11-06T06:04:55.321764+00:00; its rule hash matches the current source.
+
+Moderator initialization was attempted with the literal `FIREBASE_UID` placeholder and therefore did not enable posting. The operator helper now rejects these example identifiers before remote access and supports owner-only `init --email EMAIL` resolution to a unique existing, enabled and verified Firebase Auth UID. No account is created and no email is stored as a role. Its updated Node suite passed 19 tests. This CLI-only change requires no new iOS build. Moderation activation remains pending a successful operator command and status verification.

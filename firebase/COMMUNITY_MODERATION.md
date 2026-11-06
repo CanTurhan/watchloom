@@ -30,6 +30,19 @@ Films are outside this release.
    node scripts/community_moderation.cjs status
    ```
 
+   You can also resolve your existing Watchloom account by its sign-in email:
+
+   ```sh
+   node scripts/community_moderation.cjs init --email YOUR_WATCHLOOM_EMAIL --accept-moderation-responsibility
+   ```
+
+   `FIREBASE_UID` and `YOUR_WATCHLOOM_EMAIL` above are placeholders. Email lookup
+   runs only under the owner's CLI credentials and must return exactly one
+   enabled, verified Auth account; it does not create an account or grant a role
+   based on an app-supplied email. The stored role always uses the verified UID.
+   Sign in to Watchloom first. Apple Hide My Email may require the Auth UID
+   instead of your personal email address.
+
    `init` verifies the UID against Firebase Authentication, then atomically creates
    its server-managed role and the readiness configuration. The app cannot grant
    roles or enable itself. Nothing is automatically initialized by installation,
