@@ -111,6 +111,31 @@ test. If rules change, the previous deployment receipt becomes invalid. The
 managed Codex session has restricted Google API/localhost access; owner Terminal
 results must be distinguished from independent verification.
 
+## Diagnosing a deployed Worker
+
+If activation stops after the Worker and secret bindings are published, do not
+re-enter keys or repeat deployment before identifying the failing layer. The
+owner can run:
+
+```sh
+node scripts/diagnose_worker_network.mjs https://watchloom-community.watchloom-canturhan.workers.dev
+node scripts/diagnose_community_automation.mjs https://watchloom-community.watchloom-canturhan.workers.dev
+```
+
+The first command uses no credentials. It separately checks DNS, certificate-
+verified TLS, a native HTTPS health request and Node's fetch health request. It
+prints bounded, redacted network details without response bodies or redirect
+locations. It never disables certificate checks or follows authentication
+redirects.
+
+The second command reads the existing private configuration, checks the
+protected deployed setup endpoint, then isolates Google OAuth, Auth lookup,
+pending/ranking indexes and synthetic OpenAI classification if needed. Only
+fixed stage names, HTTP status and whitelisted error codes are printed. It does
+not enable automatic mode, publish comments or manufacture a Worker health proof.
+Passing dependencies from the owner's Mac does not prove the deployed Worker can
+reach them. Activation and release still require the protected live check.
+
 ## Votes and ranking
 
 An approved comment has integer `upVotes`, `downVotes`, `score = upVotes-downVotes`
