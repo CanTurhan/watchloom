@@ -13,7 +13,7 @@ export WRANGLER_SEND_METRICS=false
 watchloom_wrangler=(npx --yes wrangler@4.158.0)
 watchloom_phase='Cloudflare CLI authentication'
 if ! "${watchloom_wrangler[@]}" whoami --json > /dev/null; then
-  printf 'Cloudflare dashboard login and CLI OAuth are separate. Run: npx --yes wrangler@4.158.0 login, then complete browser Allow/Authorize. No Firebase deployment was attempted.\n' >&2
+  printf 'Cloudflare CLI verification failed. Inspect the Wrangler error or run npx --yes wrangler@4.158.0 whoami --json in your normal Terminal. A network error does not require another login. No Firebase deployment was attempted.\n' >&2
   exit 1
 fi
 watchloom_phase='local server/security checks'

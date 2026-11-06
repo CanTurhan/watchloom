@@ -79,6 +79,8 @@ bash scripts/setup_community_automation.sh --deploy
 ```
 
 The first two steps are one-time setup; do not repeat a completed login/key entry.
+After they are complete, `bash scripts/ship_testflight.sh` combines the verified
+server setup with the signed QA build/TestFlight upload and stops on any failure.
 Cloudflare dashboard login and CLI OAuth authorization are separate. Complete the
 CLI browser Allow/Authorize flow and confirm `wrangler whoami` shows the intended
 Free account. Do not use a temporary preview account for production.

@@ -16,6 +16,8 @@ The earlier UI/theme, single profile settings action, hosted/offline licenses an
 
 Read [automatic setup](firebase/COMMUNITY_AUTOMATION.md). One-time API key collection writes a private 0600 file outside the repository. The owner has confirmed key collection; a key format check does not prove API access. Cloudflare browser login and CLI OAuth are distinct.
 
+After the one-time CLI authorization and private key setup, the complete owner Terminal entry point is `bash scripts/ship_testflight.sh`. It runs automatic community deployment first, then source/release checks, a signed QA archive and TestFlight upload, stopping at any failed phase. The stages can also be run separately:
+
 ```sh
 bash scripts/setup_community_automation.sh --deploy
 bash scripts/release_ios.sh --upload-testflight
