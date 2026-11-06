@@ -1,7 +1,7 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {safeProviderCode, safeNetworkCode, publicNetworkDetails} = require('./community_diagnostics.cjs');
+const {safeProviderCode, safeNetworkCode, publicNetworkDetails, networkEnvironment} = require('./community_diagnostics.cjs');
 test('diagnostics expose only whitelisted provider codes, never messages, identifiers or tokens', () => {
   const secret = 'private-token-do-not-print';
   assert.equal(safeProviderCode({error: {code: 'insufficient_quota', message: secret}}), 'insufficient_quota');
@@ -30,6 +30,7 @@ test('TLS, aggregate network failures and rejected redirects expose only fixed c
   assert.equal(safeNetworkCode({cause: {code: 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE'}}), 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE');
   assert.equal(safeNetworkCode({cause: {errors: [{code: 'ENETUNREACH'}]}}), 'ENETUNREACH');
   assert.equal(safeNetworkCode({cause: {message: 'unexpected redirect'}}), 'REDIRECT_REJECTED');
+  assert.equal(safeNetworkCode({code: 'CURL_35'}), 'CURL_35');
   assert.equal(safeNetworkCode({cause: {code: 'sk-private-key', message: 'private token'}}), 'NETWORK_ERROR');
 });
 test('public network error details remove proxy credentials, tokens and control characters', () => {
@@ -37,4 +38,15 @@ test('public network error details remove proxy credentials, tokens and control 
     cause: {message: 'Bearer private-value sk-' + 'x'.repeat(30)}}));
   assert.ok(text.includes('EPROTO'));
   for (const value of ['password', 'user:', 'private-value', 'x'.repeat(30), '\\n']) assert.ok(!text.includes(value));
+});
+test('network environment reports only known variable names and booleans, never proxy URLs or Node options', () => {
+  const secret = 'private-environment-value';
+  const result = networkEnvironment({HTTPS_PROXY: 'https://user:' + secret + '@proxy.test',
+    NODE_OPTIONS: '--use-env-proxy --require ' + secret, NODE_EXTRA_CA_CERTS: '/private/' + secret,
+    NODE_TLS_REJECT_UNAUTHORIZED: '0'}, []);
+  assert.deepEqual(result, {proxyVariablesPresent: ['HTTPS_PROXY'], nodeProxyEnabled: true,
+    certificateValidationEnabled: false, customCaConfigured: true});
+  assert.ok(!JSON.stringify(result).includes(secret));
+  assert.equal(networkEnvironment({}, ['--use-env-proxy']).nodeProxyEnabled, true);
+  assert.equal(networkEnvironment({}, []).certificateValidationEnabled, true);
 });

@@ -29,6 +29,7 @@ function safeNetworkCode(error) {
     'ERR_TLS_CERT_ALTNAME_INVALID', 'ERR_TLS_HANDSHAKE_TIMEOUT',
     'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE', 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR',
     'ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION', 'ERR_SSL_TLSV1_UNRECOGNIZED_NAME',
+    'CURL_5', 'CURL_6', 'CURL_7', 'CURL_28', 'CURL_35', 'CURL_56', 'CURL_60', 'CURL_63', 'CURL_77', 'CURL_92', 'CURL_ERROR',
     'AbortError', 'TimeoutError']);
   const queue = [error];
   for (let i = 0; i < queue.length && i < 12; i++) {
@@ -51,4 +52,15 @@ function publicNetworkDetails(error) {
     .replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 240) : undefined;
   return {message: clean(error?.message), cause: clean(error?.cause?.message)};
 }
-module.exports = {safeProviderCode, safeNetworkCode, publicNetworkDetails};
+function networkEnvironment(env = process.env, argv = process.execArgv) {
+  const names = ['HTTP_PROXY', 'HTTPS_PROXY', 'ALL_PROXY', 'NO_PROXY',
+    'http_proxy', 'https_proxy', 'all_proxy', 'no_proxy'];
+  return {
+    proxyVariablesPresent: names.filter(name => !!env[name]),
+    nodeProxyEnabled: env.NODE_USE_ENV_PROXY === '1'
+      || /(?:^|\s)--use-env-proxy(?:\s|$)/.test(env.NODE_OPTIONS || '') || argv.includes('--use-env-proxy'),
+    certificateValidationEnabled: env.NODE_TLS_REJECT_UNAUTHORIZED !== '0',
+    customCaConfigured: !!env.NODE_EXTRA_CA_CERTS || !!env.SSL_CERT_FILE || !!env.SSL_CERT_DIR,
+  };
+}
+module.exports = {safeProviderCode, safeNetworkCode, publicNetworkDetails, networkEnvironment};

@@ -122,11 +122,14 @@ node scripts/diagnose_worker_network.mjs https://watchloom-community.watchloom-c
 node scripts/diagnose_community_automation.mjs https://watchloom-community.watchloom-canturhan.workers.dev
 ```
 
-The first command uses no credentials. It separately checks DNS, certificate-
-verified TLS, a native HTTPS health request and Node's fetch health request. It
-prints bounded, redacted network details without response bodies or redirect
-locations. It never disables certificate checks or follows authentication
-redirects.
+The first command reads no application credentials. It separately checks DNS,
+certificate-verified TLS, native HTTPS with the default and an independent agent,
+Node's fetch and macOS curl with default and HTTP/1.1 negotiation. A failed HTTP
+probe does not stop the remaining comparisons. It reports runtime versions,
+known proxy variable names and booleans, never their values. Network details are
+bounded and redacted, without response bodies or redirect locations. It never
+disables certificate checks or follows authentication redirects. The independent
+agent is diagnostic only and does not change deployment or app transport.
 
 The second command reads the existing private configuration, checks the
 protected deployed setup endpoint, then isolates Google OAuth, Auth lookup,
@@ -193,6 +196,7 @@ Emergency controls are documented in [COMMUNITY_MODERATION.md](COMMUNITY_MODERAT
 - [Firebase plans](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans)
 - [Workers limits](https://developers.cloudflare.com/workers/platform/limits/)
 - [Workers secrets](https://developers.cloudflare.com/workers/configuration/secrets/)
+- [Node proxy configuration](https://nodejs.org/learn/http/enterprise-network-configuration)
 - [OpenAI Moderation API](https://developers.openai.com/api/docs/guides/moderation)
 - [OpenAI API data controls](https://developers.openai.com/api/docs/guides/your-data)
 - [Apple guidelines 1.2 and 5.1.2](https://developer.apple.com/app-store/review/guidelines/)
