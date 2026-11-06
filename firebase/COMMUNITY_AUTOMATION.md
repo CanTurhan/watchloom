@@ -135,6 +135,11 @@ new consent protocol. After successful server setup:
 bash scripts/release_ios.sh --upload-testflight
 ```
 
+The release helper verifies enabled automatic configuration, the current
+migration proof and a fresh protected provider/IAM/index health check before any
+archive/upload. It does not silently enable a paused community. A partially
+completed server setup therefore cannot ship another closed-comment build.
+
 Verify real-device Apple/Google/email sign-in and renewed consent, allowed and
 prohibited Turkish/English text and names, provider outage/pending retry, two-user
 up/down/switch/withdraw/order, no self-voting, report/block/spoilers, and deletion

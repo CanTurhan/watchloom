@@ -23,6 +23,8 @@ bash scripts/release_ios.sh --upload-testflight
 
 Server setup enforces emulator-tested current rules, Spark billing verification, indexes, safe legacy ranking migration, a dedicated IAM identity, encrypted Worker secrets, a real synthetic provider/IAM/index check and activation read-back. The initial shared cap is 500 moderation/recheck jobs/day; free quotas can stop service and pending comments then wait. No paid fallback or billing upgrade is configured.
 
+The release helper additionally verifies the enabled automatic config, current migration receipt and a fresh protected provider/IAM/index health check before archive/upload; a failed or incomplete server setup cannot produce another new closed-comment release. This check does not enable a paused community.
+
 Version 1.2.0 (7) QA upload was owner-confirmed. Build 8 source was saved but its managed upload attempt stopped at live Firestore verification before archive creation. Build 9 contains this new automation/voting feature and must be built/uploaded separately. A source commit does not prove TestFlight processing. TestFlight uses test ads; production requires fresh production configuration/build and the owner's final review decision.
 
 ## App Store and privacy
@@ -35,7 +37,7 @@ Review notes should explain automatic checks, pending retries, rejected content,
 
 ## Validation and remaining evidence
 
-Dart implementation: 158 Flutter tests passed and lib/test/tool analysis was clean. It includes auth-state, renewed-consent, HTTP/token-race, vote transition/transaction, hidden/deleted-target withdrawal, ranking/threading, busy/cooldown and large-text UI cases. The 40 Node tests and 28 Python tests passed, including real RSA signature/claim/revocation checks with local keys, fail-closed moderation, consent/deletion/block races, preserved migrated totals, private secret-file handling, report queue backoff/reserved quota and strict health proof validation. Wrangler 4.158.0 bundled the Worker successfully in dry-run mode. These checks are not substitutes for live-provider or emulator authorization tests.
+Dart implementation: 158 Flutter tests passed and lib/test/tool analysis was clean. It includes auth-state, renewed-consent, HTTP/token-race, vote transition/transaction, hidden/deleted-target withdrawal, ranking/threading, busy/cooldown and large-text UI cases. The 41 Node tests and 28 Python tests passed, including real RSA signature/claim/revocation checks with local keys, fail-closed moderation, consent/deletion/block races, preserved migrated totals, private secret-file handling, report queue backoff/reserved quota and strict health proof validation. Wrangler 4.158.0 bundled the Worker successfully in dry-run mode. These checks are not substitutes for live-provider or emulator authorization tests.
 
 Current rules compile with the cached official Firestore compiler, including 15 literal RE2 expressions. The previously deployed v1 rule receipt is invalid once these v2 rules change. The managed session cannot independently use Google APIs (latest Spark check HTTP 500) or bind emulator ports; normal-Terminal v2 tests/deployment and real-device checks are still required before claiming completion.
 

@@ -66,15 +66,21 @@ function verifiedHealth(data, url, now = Date.now()) {
     && data.release === 'automatic-community-v1' && data.endpoint === url
     && Number.isFinite(checked) && checked <= now + 30000 && now - checked <= 300000;
 }
+function automaticConfiguration(data, expectedEndpoint) {
+  if (!data || data.enabled !== true || data.moderationReady !== true || data.rulesVersion !== 2
+    || data.moderationMode !== 'automatic' || data.acceptedPolicyVersion !== POLICY) return false;
+  try { return expectedEndpoint === undefined ? !!endpoint(data.moderationEndpoint) : endpoint(data.moderationEndpoint) === expectedEndpoint; }
+  catch { return false; }
+}
 async function run(args) {
   const [command, target] = args;
-  if (!['prepare', 'migrate', 'activate'].includes(command)) throw new Error('Usage: node scripts/configure_community_automation.cjs prepare|migrate|activate HTTPS_WORKER_ROOT');
+  if (!['prepare', 'migrate', 'activate', 'verify'].includes(command)) throw new Error('Usage: node scripts/configure_community_automation.cjs prepare|migrate|activate HTTPS_WORKER_ROOT|verify');
   phase = 'private moderation configuration';
   const secrets = readSecrets();
   if (command === 'activate' && !args.includes('--accept-automated-moderation-responsibility')) {
     throw new Error('Read firebase/COMMUNITY_AUTOMATION.md and pass --accept-automated-moderation-responsibility.');
   }
-  const url = command === 'activate' ? endpoint(target) : null;
+  let url = command === 'activate' ? endpoint(target) : null;
   if (command !== 'prepare') { phase = 'current emulator-tested rule receipt'; assertReceipt(); }
   phase = 'Firebase CLI login and Spark billing verification';
   const {root} = await check(PROJECT);
@@ -159,6 +165,14 @@ async function run(args) {
     return;
   }
   // The secret setup endpoint checks real provider access, IAM and required indexes.
+  if (command === 'verify') {
+    phase = 'enabled automatic community configuration';
+    const config = document((await db.get(`${DB}/communityConfig/current`, privateOptions())).body)?.data;
+    if (!automaticConfiguration(config)) {
+      throw new Error('Deploy and verify automatic community before building the new release.');
+    }
+    url = endpoint(config.moderationEndpoint);
+  }
   phase = 'verified legacy migration receipt';
   const migration = document((await db.get(`${DB}/communityAutomation/migration`, privateOptions())).body);
   const sourceHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../firebase/firestore.rules'))).digest('hex');
@@ -173,16 +187,22 @@ async function run(args) {
     || verified.release !== 'automatic-community-v1') throw new Error('Worker identity/policy mismatch. Nothing enabled.');
   const health = document((await db.get(`${DB}/communityAutomation/health`, privateOptions())).body);
   if (!verifiedHealth(health?.data, url)) throw new Error('Worker health proof is missing, stale or mismatched.');
+  if (command === 'verify') {
+    const current = document((await db.get(`${DB}/communityConfig/current`, privateOptions())).body)?.data;
+    if (!automaticConfiguration(current, url)) throw new Error('Community configuration changed during verification.');
+    console.log('Automatic community, current migration, live provider/IAM/indexes and health verified. Configuration was not enabled or changed by this release check.');
+    return;
+  }
   phase = 'automatic moderation activation and read-back';
   const configured = update('communityConfig/current', {enabled: true, moderationReady: true, rulesVersion: 2,
     operatorType: 'automatic-worker', primaryModeratorUid: null, moderationMode: 'automatic',
     moderationEndpoint: url, acceptedPolicyVersion: POLICY}, {patch: true, timestamps: ['updatedAt']});
   await db.post(`${DB}:commit`, {writes: [configured]}, privateOptions());
   const saved = document((await db.get(`${DB}/communityConfig/current`, privateOptions())).body).data;
-  if (!saved.enabled || saved.rulesVersion !== 2 || saved.moderationMode !== 'automatic' || saved.moderationEndpoint !== url) throw new Error('Read-back did not confirm activation.');
+  if (!automaticConfiguration(saved, url)) throw new Error('Read-back did not confirm activation.');
   console.log('Automatic server moderation enabled and read back. No per-comment owner approval is required. Device QA and report/support coverage remain required.');
 }
-module.exports = {endpoint, migratedFields, assertReceipt, verifiedHealth};
+module.exports = {endpoint, migratedFields, assertReceipt, verifiedHealth, automaticConfiguration};
 if (require.main === module) run(process.argv.slice(2)).catch(error => {
   const status = Number.isInteger(error.status) ? ` (HTTP ${error.status})` : '';
   console.error(`Automation setup stopped during: ${phase}${status}. No completion verified; no credentials were printed.`);

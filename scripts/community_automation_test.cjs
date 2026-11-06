@@ -1,7 +1,7 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {migratedFields, endpoint, verifiedHealth} = require('./configure_community_automation.cjs');
+const {migratedFields, endpoint, verifiedHealth, automaticConfiguration} = require('./configure_community_automation.cjs');
 test('ranking migration preserves existing votes and refuses inconsistent partial counters', () => {
   assert.deepEqual(migratedFields({body: 'legacy'}), {scoreSchema: 1, upVotes: 0, downVotes: 0, score: 0});
   assert.deepEqual(migratedFields({scoreSchema: 1, upVotes: 9, downVotes: 2, score: 7}), {});
@@ -25,4 +25,16 @@ test('activation proof rejects missing, malformed, stale, future and mismatched 
     {...healthy, verifiedAt: new Date(now - 300001).toISOString()}, {...healthy, verifiedAt: new Date(now + 30001).toISOString()},
     {...healthy, project: 'puzzle-music-sort-canturhan'}, {...healthy, endpoint: 'https://other.example.workers.dev/'},
     {...healthy, release: 'other'}, {...healthy, policyVersion: 'old'}]) assert.equal(verifiedHealth(value, url, now), false);
+});
+test('release verification fails closed on paused, malformed or incomplete automatic configuration', () => {
+  const url = 'https://watchloom-community.example.workers.dev/';
+  const ready = {enabled: true, moderationReady: true, rulesVersion: 2, moderationMode: 'automatic',
+    acceptedPolicyVersion: '2026-11-06-auto-v1', moderationEndpoint: url};
+  assert.equal(automaticConfiguration(ready, url), true);
+  for (const config of [null, {}, {...ready, enabled: false}, {...ready, enabled: 'true'},
+    {...ready, moderationReady: 'true'}, {...ready, rulesVersion: 1}, {...ready, moderationMode: 'owner-cli'},
+    {...ready, acceptedPolicyVersion: 'old'}, {...ready, moderationEndpoint: 'https://evil.test/'}]) {
+    assert.equal(automaticConfiguration(config), false);
+  }
+  assert.equal(automaticConfiguration(ready, 'https://other.example.workers.dev/'), false);
 });

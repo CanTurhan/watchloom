@@ -26,6 +26,7 @@ upload_archive() {
 if [[ "$release_action" == '--upload-existing' ]]; then
   python3 scripts/check_firebase_release.py
   python3 scripts/check_firestore_release.py
+  node scripts/configure_community_automation.cjs verify
   python3 scripts/check_ios_security.py
   python3 scripts/verify_ios_artifacts.py --archive-only
   upload_archive
@@ -61,6 +62,7 @@ fi
 if [[ "$release_action" == '--check' ]]; then
   python3 scripts/check_firebase_release.py
   python3 scripts/check_firestore_release.py
+  node scripts/configure_community_automation.cjs verify
   python3 scripts/check_ios_security.py
   printf '\nChecks passed. No archive or upload was requested.\n'
   exit 0
@@ -68,6 +70,7 @@ fi
 
 python3 scripts/check_firebase_release.py
 python3 scripts/check_firestore_release.py
+node scripts/configure_community_automation.cjs verify
 python3 scripts/check_ios_security.py
 
 # Preserve the previous export outside Flutter's output directory. A failed

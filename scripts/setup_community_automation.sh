@@ -9,6 +9,14 @@ if [[ "${1:-}" != '--deploy' || $# -ne 1 ]]; then
 fi
 watchloom_phase='local server/security checks'
 trap 'watchloom_exit=$?; if [[ "$watchloom_exit" -ne 0 ]]; then printf "Stopped during: %s. Automatic moderation completion was not verified.\n" "$watchloom_phase" >&2; fi' EXIT
+export WRANGLER_SEND_METRICS=false
+watchloom_wrangler=(npx --yes wrangler@4.158.0)
+watchloom_phase='Cloudflare CLI authentication'
+if ! "${watchloom_wrangler[@]}" whoami --json > /dev/null; then
+  printf 'Cloudflare dashboard login and CLI OAuth are separate. Run: npx --yes wrangler@4.158.0 login, then complete browser Allow/Authorize. No Firebase deployment was attempted.\n' >&2
+  exit 1
+fi
+watchloom_phase='local server/security checks'
 node --test server/community-worker/test/*.test.mjs scripts/community_automation_test.cjs
 python3 -m unittest discover -s scripts -p 'test_*.py'
 watchloom_phase='emulator-tested Spark rules and indexes'
@@ -18,10 +26,8 @@ node scripts/configure_community_automation.cjs prepare
 watchloom_phase='legacy scores and consent migration'
 node scripts/configure_community_automation.cjs migrate
 watchloom_phase='Cloudflare Free Worker deployment'
-export WRANGLER_SEND_METRICS=false
 mkdir -p build/release-audit
 watchloom_deploy_log="$watchloom_root/build/release-audit/community-worker-deploy.log"
-watchloom_wrangler=(npx --yes wrangler@4.158.0)
 if "${watchloom_wrangler[@]}" deploy --config server/community-worker/wrangler.jsonc > "$watchloom_deploy_log" 2>&1; then
   cat "$watchloom_deploy_log"
 else
