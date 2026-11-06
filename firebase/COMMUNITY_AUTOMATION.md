@@ -139,6 +139,30 @@ not enable automatic mode, publish comments or manufacture a Worker health proof
 Passing dependencies from the owner's Mac does not prove the deployed Worker can
 reach them. Activation and release still require the protected live check.
 
+The protected setup response identifies exactly one failed check:
+`server_credentials`, `google_oauth`, `firebase_auth`, `pending_index`,
+`ranking_index`, `openai_moderation` or `health_write`. After verifying the owner
+setup token, it may return a whitelisted provider code and numeric upstream HTTP
+status. Provider messages, request/response bodies, tokens, emails and key data
+are never returned or logged. The owner client validates the project/policy/
+release and stage/code vocabulary before printing these diagnostics. Anonymous
+or invalid-token requests receive no setup details, including when server
+credentials are malformed. Health proof creation follows all provider checks;
+the client still requires both a successful response and the fresh stored proof.
+
+An HTTP 503 after the native HTTPS correction is not sufficient to name the
+failing provider. Publish the current Worker diagnostics with the complete
+shipping entry point, which then checks activation and stops on failure:
+
+```sh
+bash scripts/ship_testflight.sh
+```
+
+The final `Check:` value and provider code identify the failing live step. Do not
+repeat key entry, change billing or skip health verification based on a generic
+503. The managed session cannot refresh Cloudflare OAuth because it cannot reach
+that auth server; this does not invalidate the owner's existing CLI login.
+
 On the owner's Node 25.2.0/OpenSSL 3.6.3 runtime, native HTTPS and both curl
 probes returned the correct health response with HTTP 200 while fetch failed
 with a TLS record error; no proxy variables were present. The protected setup
@@ -161,6 +185,19 @@ the current rule/migration receipts and real provider/IAM/index health pass.
 It then runs the complete release checks, builds the signed QA archive and uploads
 it to TestFlight. Any failure stops the sequence; the normal release check by
 itself still never enables a paused community.
+
+Both setup and release checks include nine synthetic scenarios executed by the
+pinned Wrangler dependency's `workerd` runtime. They exercise production setup,
+RSA key import/signing, stream/JSON processing, each provider failure, proof
+creation and owner-only diagnostics. Test keys are generated in memory and real
+network access is blocked. Run them independently with:
+
+```sh
+bash scripts/test_worker_runtime.sh
+```
+
+These checks cover runtime behavior; they cannot prove live credentials, IAM,
+provider availability, Cloudflare platform quotas or production CPU usage.
 
 ## Votes and ranking
 

@@ -10,7 +10,7 @@ import {account, googleToken, lookupUser, Store, limitedText} from '../server/co
 import {ModerationService} from '../server/community-worker/src/moderation.mjs';
 const require = createRequire(import.meta.url);
 const {endpoint} = require('./configure_community_automation.cjs');
-const {verifyWorkerSetup} = require('./community_worker_client.cjs');
+const {verifyWorkerSetup, workerFailureDetails} = require('./community_worker_client.cjs');
 const {safeProviderCode, safeNetworkCode} = require('./community_diagnostics.cjs');
 const emit = value => process.stdout.write(JSON.stringify(value) + '\n');
 let currentStage = 'private_configuration';
@@ -24,7 +24,8 @@ async function step(stage, action) {
   catch (error) {
     if (stage === 'deployed_worker' && !lastFailure) {
       lastFailure = {code: typeof error.code === 'string' && /^WORKER_[A-Z_]+$/.test(error.code)
-        ? error.code : safeNetworkCode(error), ...(Number.isInteger(error.status) ? {httpStatus: error.status} : {})};
+        ? error.code : safeNetworkCode(error), ...(Number.isInteger(error.status) ? {httpStatus: error.status} : {}),
+        ...workerFailureDetails(error)};
     }
     emit({stage, status: 'failed', ...(lastFailure || {code: 'INVALID_OR_UNEXPECTED_RESPONSE'})});
     return false;

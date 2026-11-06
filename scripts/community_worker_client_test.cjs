@@ -3,7 +3,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {EventEmitter} = require('node:events');
 const {Readable, PassThrough} = require('node:stream');
-const {createWorkerClient} = require('./community_worker_client.cjs');
+const {createWorkerClient, workerFailureDetails} = require('./community_worker_client.cjs');
 const ROOT = 'https://watchloom-community.watchloom-canturhan.workers.dev/';
 const TOKEN = 'a'.repeat(64); // Synthetic setup token, never a live credential.
 const READY = {ready: true, project: 'watchloom-canturhan', policyVersion: '2026-11-06-auto-v1', release: 'automatic-community-v1'};
@@ -135,4 +135,24 @@ test('unsafe URLs, malformed credentials and disabled certificate checks fail be
     else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previous;
   }
   assert.equal(requests, 0);
+});
+test('an authenticated setup failure reports its exact check and safe upstream status without copying response text', async () => {
+  const failure = {...READY, ready: false, error: 'setup_check_failed', stage: 'health_write',
+    code: 'PERMISSION_DENIED', upstreamStatus: 403, privateText: TOKEN};
+  const {calls, verify} = transport([{status: 503, body: JSON.stringify(failure)}]);
+  await assert.rejects(verify(ROOT, TOKEN), error => {
+    assert.equal(error.code, 'WORKER_HTTP_ERROR'); assert.equal(error.status, 503);
+    assert.deepEqual(workerFailureDetails(error), {check: 'health_write', upstreamCode: 'PERMISSION_DENIED', upstreamStatus: 403});
+    assert.ok(!JSON.stringify(error).includes(TOKEN)); assert.ok(!error.message.includes(TOKEN)); return true;
+  });
+  assert.equal(calls.length, 1);
+});
+test('foreign or unrecognized setup diagnostics cannot inject identifiers or text into CLI errors', async () => {
+  const base = {...READY, ready: false, error: 'setup_check_failed', stage: 'health_write', code: 'PERMISSION_DENIED'};
+  for (const body of [{...base, code: TOKEN}, {...base, stage: TOKEN}, {...base, project: 'other-project'}, {error: TOKEN}]) {
+    const {verify} = transport([{status: 503, body: JSON.stringify(body)}]);
+    await assert.rejects(verify(ROOT, TOKEN), error => {
+      assert.equal(workerFailureDetails(error), null); assert.ok(!JSON.stringify(error).includes(TOKEN)); return true;
+    });
+  }
 });

@@ -45,17 +45,28 @@ Review notes should explain automatic checks, pending retries, rejected content,
 
 ## Validation and remaining evidence
 
-Dart implementation: 158 Flutter tests passed and lib/test/tool analysis was clean. It includes auth-state, renewed-consent, HTTP/token-race, vote transition/transaction, hidden/deleted-target withdrawal, ranking/threading, busy/cooldown and large-text UI cases. The 56 Node tests and 32 Python tests passed, covering real RSA signature/claim/revocation checks with local keys, fail-closed moderation, consent/deletion/block races, preserved migrated totals, private secret-file handling, report queue backoff/reserved quota, strict health proof validation, structured Worker deployment receipts and credential-safe diagnostics. Native HTTPS tests additionally enforce redirect rejection, certificate checks, bounded bodies, current identity, deadlines and one transient retry without leaking credentials/provider text. Wrangler 4.158.0 bundled the Worker successfully in dry-run mode. These checks are not substitutes for live-provider or emulator authorization tests.
+Dart implementation: 158 Flutter tests passed and lib/test/tool analysis was clean. It includes auth-state, renewed-consent, HTTP/token-race, vote transition/transaction, hidden/deleted-target withdrawal, ranking/threading, busy/cooldown and large-text UI cases. The 61 Node tests and 32 Python tests passed, covering real RSA signature/claim/revocation checks with local keys, fail-closed moderation, consent/deletion/block races, preserved migrated totals, private secret-file handling, report queue backoff/reserved quota, strict health proof validation, structured Worker deployment receipts and credential-safe diagnostics. Native HTTPS tests additionally enforce redirect rejection, certificate checks, bounded bodies, current identity, deadlines and one transient retry without leaking credentials/provider text. Nine synthetic scenarios passed in the actual workerd runtime, including production setup success, every provider stage, private health writes and unauthorized diagnostic access; no live credentials or network were used. Setup and release now include these runtime checks. Wrangler 4.158.0 bundled the updated Worker successfully in dry-run mode (33.67 KiB). These checks are not substitutes for live-provider or emulator authorization tests.
 
 The owner-run Auth/Firestore emulator suite passed all 18 tests, and current v2 rules/index deployment was confirmed on November 6, 2026. The local receipt at 2026-11-06T12:11:15.996797+00:00 matches the current rule hash; anonymous account/marker reads were denied. Dedicated server credentials and the legacy consent/ranking migration were also owner-confirmed. The owner subsequently registered the workers.dev namespace, deployed Worker version fdf02b4f-5690-48d4-8a0b-78dc7a96d9a9 to https://watchloom-community.watchloom-canturhan.workers.dev and bound all three secrets. Owner-run diagnostics passed Google OAuth, Auth lookup, both indexes and synthetic OpenAI classification. The latest owner comparison returned valid HTTP 200 health responses through native HTTPS, an independent agent and both curl modes, while fetch failed with a TLS record error. Node was 25.2.0/OpenSSL 3.6.3, with no proxy variables and certificate validation enabled. Activation/release now use bounded native HTTPS; earlier intermittent protocol errors receive at most one retry. These observations do not establish protected deployed provider readiness. Automatic-mode activation, live Worker provider health and build 9 upload remain unverified. The managed activation attempt stopped at Firebase CLI/Spark verification with HTTP 500 before any config write; owner Terminal completion is needed. The managed session cannot independently use Google APIs or bind emulator ports; owner-run results and device evidence remain distinct.
 
 Device QA: Apple/Google/email sign-in, existing-user new consent, allowed/unsafe Turkish/English text and names, outage/retry, two-user up/down/switch/withdraw/order, no self-voting, reporting/blocking/spoilers, and account deletion with outstanding votes. Verify App Store Connect processing after a successful upload.
+
+The owner's subsequent `--resume` run passed Spark billing verification and
+reached the protected Worker, which returned HTTP 503. The failed live provider
+step is still unknown. Current source adds owner-only, bounded stage/provider
+diagnostics; health proof creation and automatic activation still require every
+check to pass. This new server source requires full `bash scripts/ship_testflight.sh`
+deployment before its `Check:` output can identify the live failure. Managed
+Cloudflare CLI verification also failed because the auth server was unreachable;
+stored login credentials were retained. Updated Worker deployment, activation and
+build 9 upload remain pending owner Terminal execution.
 
 ## Primary references
 
 - [Apple App Review Guidelines 1.2 and 5.1.2](https://developer.apple.com/app-store/review/guidelines/)
 - [Firebase plans](https://firebase.google.com/docs/projects/billing/firebase-pricing-plans)
 - [Workers Free limits](https://developers.cloudflare.com/workers/platform/limits/)
+- [Cloudflare runtime testing](https://developers.cloudflare.com/workers/testing/)
 - [OpenAI Moderation API](https://developers.openai.com/api/docs/guides/moderation)
 - [OpenAI data controls](https://developers.openai.com/api/docs/guides/your-data)
 

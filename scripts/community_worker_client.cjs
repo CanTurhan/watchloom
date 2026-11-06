@@ -22,7 +22,7 @@ class WorkerVerificationError extends Error {
 }
 const networkError = error => new WorkerVerificationError(safeNetworkCode(error));
 
-function requestOnce(root, token, timeout, request, identity) {
+function requestOnce(root, token, timeout, request, identity, readSetupFailure) {
   return new Promise((resolve, reject) => {
     let outgoing, incoming, completed = false;
     const finish = (error, value) => {
@@ -46,12 +46,13 @@ function requestOnce(root, token, timeout, request, identity) {
         });
         // Native HTTPS never follows redirects; the setup token stays on this host.
         const status = response.statusCode;
-        if (status !== 200) {
-          finish(new WorkerVerificationError(status >= 300 && status < 400
-            ? 'WORKER_REDIRECT_REJECTED' : 'WORKER_HTTP_ERROR', status)); return;
+        const httpError = status === 200 ? null : new WorkerVerificationError(status >= 300 && status < 400
+          ? 'WORKER_REDIRECT_REJECTED' : 'WORKER_HTTP_ERROR', status);
+        if (status >= 300 && status < 400) {
+          finish(httpError); return;
         }
         if (!/^application\/json(?:\s*;|\s*$)/i.test(response.headers['content-type'] || '')) {
-          finish(new WorkerVerificationError('WORKER_INVALID_RESPONSE')); return;
+          finish(httpError || new WorkerVerificationError('WORKER_INVALID_RESPONSE')); return;
         }
         if (Number(response.headers['content-length']) > MAXIMUM_BYTES) {
           finish(new WorkerVerificationError('WORKER_RESPONSE_TOO_LARGE')); return;
@@ -68,7 +69,12 @@ function requestOnce(root, token, timeout, request, identity) {
           if (completed) return;
           let data;
           try { data = JSON.parse(new TextDecoder('utf-8', {fatal: true}).decode(Buffer.concat(chunks))); }
-          catch { finish(new WorkerVerificationError('WORKER_INVALID_RESPONSE')); return; }
+          catch { finish(httpError || new WorkerVerificationError('WORKER_INVALID_RESPONSE')); return; }
+          if (httpError) {
+            const detail = readSetupFailure(data);
+            if (detail) httpError.setupFailure = detail;
+            finish(httpError); return;
+          }
           if (data?.ready !== true || data.project !== identity.PROJECT || data.policyVersion !== identity.POLICY
             || data.release !== identity.RELEASE) {
             finish(new WorkerVerificationError('WORKER_IDENTITY_MISMATCH')); return;
@@ -90,11 +96,12 @@ function createWorkerClient({request = https.request, timeoutMs = 45000,
       throw new WorkerVerificationError('WORKER_UNSAFE_CONFIGURATION');
     }
     const identity = await import('../server/community-worker/src/policy.mjs');
+    const {readSetupFailure} = await import('../server/community-worker/src/diagnostics.mjs');
     const deadline = Date.now() + Math.min(45000, Math.max(1, timeoutMs));
     for (let attempt = 0; attempt < 2; attempt++) {
       const remaining = deadline - Date.now();
       if (remaining <= 0) throw new WorkerVerificationError('WORKER_TIMEOUT');
-      try { return await requestOnce(normalized, token, remaining, request, identity); }
+      try { return await requestOnce(normalized, token, remaining, request, identity, readSetupFailure); }
       catch (error) {
         // Synthetic verification is idempotent. Never retry certificate errors,
         // HTTP/provider failures, mismatched identity, redirects or invalid JSON.
@@ -104,4 +111,9 @@ function createWorkerClient({request = https.request, timeoutMs = 45000,
     }
   };
 }
-module.exports = {endpoint, createWorkerClient, verifyWorkerSetup: createWorkerClient()};
+function workerFailureDetails(error) {
+  if (!(error instanceof WorkerVerificationError) || !error.setupFailure) return null;
+  const {stage, code, upstreamStatus} = error.setupFailure;
+  return {check: stage, upstreamCode: code, ...(upstreamStatus ? {upstreamStatus} : {})};
+}
+module.exports = {endpoint, createWorkerClient, workerFailureDetails, verifyWorkerSetup: createWorkerClient()};

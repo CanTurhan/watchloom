@@ -1,11 +1,20 @@
 import {PROJECT, uidValid} from './policy.mjs';
+import {upstreamDiagnostic} from './diagnostics.mjs';
 
 export class ServiceError extends Error {
-  constructor(code = 'service_unavailable', status = 503) { super(code); this.code = code; this.status = status; }
+  constructor(code = 'service_unavailable', status = 503, upstream) {
+    super(code); this.code = code; this.status = status;
+    if (upstream) { this.upstreamCode = upstream.code; this.upstreamStatus = upstream.status; }
+  }
+}
+async function providerFailure(response) {
+  let data; try { data = JSON.parse(await limitedText(response, 64 * 1024)); } catch {}
+  return upstreamDiagnostic(data, response.status);
 }
 export async function jsonFetch(url, options = {}) {
   const response = await fetch(url, {...options, redirect: 'error', signal: AbortSignal.timeout(8000)});
-  if (!response.ok) throw new ServiceError(response.status === 429 ? 'temporarily_busy' : 'service_unavailable');
+  if (!response.ok) throw new ServiceError(response.status === 429 ? 'temporarily_busy' : 'service_unavailable', 503,
+    await providerFailure(response));
   const body = await limitedText(response, 256 * 1024);
   try { return JSON.parse(body); } catch { throw new ServiceError(); }
 }
@@ -114,7 +123,7 @@ export class Store {
       headers: {Authorization: `Bearer ${await googleToken(this.env)}`, 'Content-Type': 'application/json'},
       ...(body === undefined ? {} : {body: JSON.stringify(body)})});
     if (missing && response.status === 404) return null;
-    if (!response.ok) throw new ServiceError();
+    if (!response.ok) throw new ServiceError('service_unavailable', 503, await providerFailure(response));
     return JSON.parse(await limitedText(response, 256 * 1024));
   }
   decode(doc) { return doc ? {path: doc.name.slice(this.prefix.length), updateTime: doc.updateTime,

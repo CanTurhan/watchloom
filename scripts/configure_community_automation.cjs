@@ -6,7 +6,7 @@ const path = require('node:path');
 const crypto = require('node:crypto');
 const {check} = require('./check_firebase_spark.cjs');
 const {privateOptions, document, update} = require('./community_moderation.cjs');
-const {endpoint, verifyWorkerSetup} = require('./community_worker_client.cjs');
+const {endpoint, verifyWorkerSetup, workerFailureDetails} = require('./community_worker_client.cjs');
 const PROJECT = 'watchloom-canturhan';
 const POLICY = '2026-11-06-auto-v1';
 const SECRET = path.join(os.homedir(), '.config/watchloom/community/worker-secrets.json');
@@ -196,6 +196,8 @@ if (require.main === module) run(process.argv.slice(2)).catch(error => {
   const status = Number.isInteger(error.status) ? ` (HTTP ${error.status})` : '';
   const code = typeof error.code === 'string' && /^(?:WORKER_[A-Z_]+|EPROTO|ECONNRESET|ECONNABORTED|EPIPE|EAI_AGAIN|ENOTFOUND|ETIMEDOUT|CERT_HAS_EXPIRED|ERR_TLS_CERT_ALTNAME_INVALID)$/.test(error.code)
     ? ` [${error.code}]` : '';
-  console.error(`Automation setup stopped during: ${phase}${status}${code}. No completion verified; no credentials were printed.`);
+  const detail = workerFailureDetails(error);
+  const check = detail ? ` Check: ${detail.check}; ${detail.upstreamCode}${detail.upstreamStatus ? `; upstream HTTP ${detail.upstreamStatus}` : ''}.` : '';
+  console.error(`Automation setup stopped during: ${phase}${status}${code}.${check} No completion verified; no credentials were printed.`);
   process.exitCode = 1;
 });
