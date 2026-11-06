@@ -12,6 +12,10 @@ import 'package:watchloom/core/localization/app_legal_strings.dart';
 import 'package:watchloom/features/settings/presentation/pages/ad_privacy_page.dart';
 import 'package:watchloom/features/settings/presentation/widgets/clear_local_data_tile.dart';
 import 'package:watchloom/features/account/presentation/account_page.dart';
+import 'package:watchloom/features/settings/presentation/pages/notification_settings_page.dart';
+import 'package:watchloom/features/settings/presentation/pages/license_notices_page.dart';
+import 'package:watchloom/features/community/presentation/community_profile_page.dart';
+import 'package:watchloom/features/community/presentation/community_strings.dart';
 
 class SettingsPage extends StatelessWidget {
   const SettingsPage({required this.localeController, super.key});
@@ -29,6 +33,7 @@ class SettingsPage extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           const AccountTile(),
+          const SizedBox(height: 16),
           ListenableBuilder(
             listenable: AppScope.of(context).premiumController,
             builder: (context, _) => Card(
@@ -49,15 +54,6 @@ class SettingsPage extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 20),
-          Card(
-            child: _SettingsTile(
-              icon: Icons.privacy_tip_outlined,
-              title: strings.adPrivacyTitle,
-              subtitle: strings.adPrivacySubtitle,
-              onTap: () => AdPrivacyPage.open(context),
-            ),
-          ),
-          const SizedBox(height: 20),
           _SectionTitle(strings.general),
           Card(
             child: Column(
@@ -75,6 +71,46 @@ class SettingsPage extends StatelessWidget {
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => _showLanguageSelector(context, strings),
+                ),
+                const Divider(height: 1, indent: 58),
+                _SettingsTile(
+                  icon: Icons.notifications_outlined,
+                  title: strings.notificationsSettingTitle,
+                  subtitle: strings.notificationsSettingSubtitle,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const NotificationSettingsPage(),
+                    ),
+                  ),
+                ),
+                const Divider(height: 1, indent: 58),
+                _SettingsTile(
+                  icon: Icons.tune_rounded,
+                  title: strings.adPrivacyTitle,
+                  subtitle: strings.adPrivacySubtitle,
+                  onTap: () => AdPrivacyPage.open(context),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 24),
+          _SectionTitle(isTurkish ? 'TOPLULUK' : 'COMMUNITY'),
+          Card(
+            child: Column(
+              children: [
+                _SettingsTile(
+                  icon: Icons.badge_outlined,
+                  title: CommunityStrings.of(context).publicIdentity,
+                  subtitle: isTurkish
+                      ? 'Görünen adın ve engellediğin hesaplar'
+                      : 'Your public name and blocked accounts',
+                  onTap: () => CommunityProfilePage.open(context),
+                ),
+                const Divider(height: 1, indent: 58),
+                _SettingsTile(
+                  icon: Icons.verified_user_outlined,
+                  title: CommunityStrings.of(context).guidelines,
+                  onTap: () => openCommunityGuidelines(context),
                 ),
               ],
             ),
@@ -120,13 +156,12 @@ class SettingsPage extends StatelessWidget {
                 _SettingsTile(
                   icon: Icons.code_rounded,
                   title: strings.openSourceLicenses,
-                  onTap: () {
-                    showLicensePage(
-                      context: context,
-                      applicationName: 'Watchloom',
-                      applicationVersion: '1.1.0',
-                    );
-                  },
+                  subtitle: strings.licenseAcknowledgements,
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const LicenseNoticesPage(),
+                    ),
+                  ),
                 ),
                 const Divider(height: 1),
                 _SettingsTile(
@@ -145,7 +180,7 @@ class SettingsPage extends StatelessWidget {
                 _SettingsTile(
                   icon: Icons.info_outline_rounded,
                   title: strings.about,
-                  subtitle: '${strings.version} 1.1.0',
+                  subtitle: '${strings.version} 1.2.0',
                   onTap: () => _openTextPage(
                     context,
                     strings.about,
@@ -260,15 +295,15 @@ Satın alma sorunlarında App Store mesajını ekleyin. Apple Hesabı parolanız
 ''';
 
   static const String _aboutEn = '''
-Watchloom helps users remember where they stopped, review the last watched episode, follow known upcoming releases and turn their monthly viewing activity into a shareable visual diary.
+Watchloom brings your series, episode progress and viewing memories together. Discover a series, save your next episode and see your month in perspective.
 
-The application is designed to work without a user account or Firebase.
+Your library works without an account. Optional sign-in enables private cloud backup and moderated community discussions. Premium adds unlimited library space and removes banner ads.
 ''';
 
   static const String _aboutTr = '''
-Watchloom; kullanıcıların hangi bölümde kaldığını hatırlamasına, son izlenen bölümü gözden geçirmesine, açıklanmış gelecek yayınları takip etmesine ve aylık izleme geçmişini paylaşılabilir görsel bir günlüğe dönüştürmesine yardımcı olur.
+Watchloom; dizilerini, bölüm ilerlemeni ve izleme anılarını bir araya getirir. Yeni bir dizi keşfet, sıradaki bölümünü kaydet ve ayına yeniden bak.
 
-Uygulama kullanıcı hesabı ve Firebase gerektirmeden çalışacak şekilde tasarlanmıştır.
+Kütüphanen hesap açmadan da çalışır. İsteğe bağlı giriş ile özel bulut yedeğini ve moderasyonlu dizi yorumlarını kullanabilirsin. Premium, sınırsız kütüphane alanı sunar ve banner reklamları kaldırır.
 ''';
 }
 

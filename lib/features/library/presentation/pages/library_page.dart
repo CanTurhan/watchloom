@@ -7,6 +7,7 @@ import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/localization/app_monetization_strings.dart';
 import 'package:watchloom/features/premium/presentation/premium_page.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/core/widgets/app_page_header.dart';
 import 'package:watchloom/features/activity/presentation/controllers/watch_activity_controller.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
@@ -62,41 +63,31 @@ class _LibraryPageState extends State<LibraryPage> {
                 children: [
                   Padding(
                     padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            strings.library,
-                            style: const TextStyle(
-                              fontSize: 30,
-                              fontWeight: FontWeight.w900,
-                              letterSpacing: -0.8,
-                            ),
+                    child: AppPageHeader(
+                      title: strings.library,
+                      eyebrow: strings.isTurkish
+                          ? 'KOLEKSİYONUN'
+                          : 'YOUR COLLECTION',
+                      action: TextButton(
+                        onPressed: () => PremiumPage.open(context),
+                        child: Text(
+                          scope.premiumController.hasAccess
+                              ? '${libraryController.entries.length} · ∞'
+                              : '${libraryController.entries.length} / 5',
+                          semanticsLabel: scope.premiumController.hasAccess
+                              ? '${strings.premiumTitle}, ${libraryController.entries.length}'
+                              : '${strings.freeLibraryUsage(libraryController.entries.length)}. ${strings.seePremium}',
+                          style: const TextStyle(
+                            color: AppColors.accentSoft,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
-                        Flexible(
-                          child: TextButton(
-                            onPressed: () => PremiumPage.open(context),
-                            child: Text(
-                              scope.premiumController.hasAccess
-                                  ? '${libraryController.entries.length} · ∞'
-                                  : '${libraryController.entries.length} / 5',
-                              semanticsLabel: scope.premiumController.hasAccess
-                                  ? '${strings.premiumTitle}, ${libraryController.entries.length}'
-                                  : '${strings.freeLibraryUsage(libraryController.entries.length)}. ${strings.seePremium}',
-                              style: const TextStyle(
-                                color: AppColors.accentSoft,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
+                      ),
                     ),
                   ),
                   SizedBox(
-                    height: 48,
+                    height: MediaQuery.textScalerOf(context).scale(48) + 16,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
                       padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -526,84 +517,97 @@ class _LibraryCard extends StatelessWidget {
         children: [
           InkWell(
             onTap: onTap,
-            child: SizedBox(
-              height: 140,
-              child: Row(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 140),
+              child: Stack(
                 children: [
-                  SizedBox(
+                  Positioned(
+                    left: 0,
+                    top: 0,
+                    bottom: 0,
                     width: 96,
-                    height: double.infinity,
                     child: _Poster(url: entry.imageMedium),
                   ),
-                  Expanded(
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(15, 14, 4, 14),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            entry.name,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w800,
+                  Padding(
+                    padding: const EdgeInsets.only(left: 96),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(15, 14, 4, 14),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  entry.name,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    fontSize: 17,
+                                    fontWeight: FontWeight.w800,
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 9,
+                                    vertical: 5,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: AppColors.accent.withValues(
+                                      alpha: 0.14,
+                                    ),
+                                    borderRadius: BorderRadius.circular(10),
+                                  ),
+                                  child: Text(
+                                    statusText,
+                                    style: const TextStyle(
+                                      color: AppColors.accentSoft,
+                                      fontSize: 10,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                Text(
+                                  entry.hasProgress
+                                      ? entry.progressCode
+                                      : notStartedText,
+                                  style: const TextStyle(
+                                    color: AppColors.textSecondary,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                          const SizedBox(height: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 9,
-                              vertical: 5,
-                            ),
-                            decoration: BoxDecoration(
-                              color: AppColors.accent.withValues(alpha: 0.14),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Text(
-                              statusText,
-                              style: const TextStyle(
-                                color: AppColors.accentSoft,
-                                fontSize: 10,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ),
-                          const Spacer(),
-                          Text(
-                            entry.hasProgress
-                                ? entry.progressCode
-                                : notStartedText,
-                            style: const TextStyle(
-                              color: AppColors.textSecondary,
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  PopupMenuButton<String>(
-                    onSelected: (value) {
-                      if (value == 'remove') {
-                        onRemove();
-                      }
-                    },
-                    itemBuilder: (context) {
-                      return [
-                        PopupMenuItem(
-                          value: 'remove',
-                          child: Row(
-                            children: [
-                              const Icon(Icons.delete_outline_rounded),
-                              const SizedBox(width: 10),
-                              Text(removeText),
-                            ],
                           ),
                         ),
-                      ];
-                    },
+                        PopupMenuButton<String>(
+                          onSelected: (value) {
+                            if (value == 'remove') {
+                              onRemove();
+                            }
+                          },
+                          itemBuilder: (context) {
+                            return [
+                              PopupMenuItem(
+                                value: 'remove',
+                                child: Row(
+                                  children: [
+                                    const Icon(Icons.delete_outline_rounded),
+                                    const SizedBox(width: 10),
+                                    Text(removeText),
+                                  ],
+                                ),
+                              ),
+                            ];
+                          },
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
@@ -612,36 +616,38 @@ class _LibraryCard extends StatelessWidget {
           const Divider(height: 1),
           InkWell(
             onTap: isProcessing ? null : onMarkNext,
-            child: SizedBox(
-              height: 50,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (isProcessing)
-                    const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  else
-                    const Icon(
-                      Icons.check_circle_outline_rounded,
-                      color: Color(0xFF4ADE80),
-                      size: 20,
-                    ),
-                  const SizedBox(width: 8),
-                  Flexible(
-                    child: Text(
-                      markText,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 50),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (isProcessing)
+                      const SizedBox(
+                        width: 18,
+                        height: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    else
+                      const Icon(
+                        Icons.check_circle_outline_rounded,
+                        color: Color(0xFF4ADE80),
+                        size: 20,
+                      ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        markText,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

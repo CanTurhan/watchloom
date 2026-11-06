@@ -27,17 +27,46 @@ class ActivityLocalDataSource {
     required Map<String, Object?> log,
     required Map<String, Object?> updatedLibraryEntry,
   }) async {
+    final showId = log['show_id'];
+    final episodeId = log['episode_id'];
+    if (showId is! int ||
+        showId <= 0 ||
+        episodeId is! int ||
+        episodeId <= 0 ||
+        showId != updatedLibraryEntry['show_id'] ||
+        log['source'] != 'manual_watch' ||
+        updatedLibraryEntry['last_season'] != log['season'] ||
+        updatedLibraryEntry['last_episode'] != log['episode_number'] ||
+        updatedLibraryEntry['last_episode_id'] != episodeId) {
+      return false;
+    }
     final database = await _watchloomDatabase.database;
 
     final result = await database.transaction((transaction) async {
       final saved = await transaction.query(
         'library_entries',
-        columns: ['show_id'],
+        columns: [
+          'show_id',
+          'status',
+          'last_season',
+          'last_episode',
+          'last_episode_id',
+        ],
         where: 'show_id = ?',
         whereArgs: [updatedLibraryEntry['show_id']],
         limit: 1,
       );
       if (saved.isEmpty) return false;
+      final entry = saved.single;
+      // A network request may finish after the user manually changes progress.
+      // Reject that stale request instead of moving progress backwards or
+      // storing an incorrect state for undo. Notes/favorites do not interfere.
+      if (entry['status'] != log['previous_status'] ||
+          entry['last_season'] != log['previous_season'] ||
+          entry['last_episode'] != log['previous_episode_number'] ||
+          entry['last_episode_id'] != log['previous_episode_id']) {
+        return false;
+      }
       final existing = await transaction.query(
         'episode_watch_logs',
         columns: ['id'],
@@ -50,13 +79,15 @@ class ActivityLocalDataSource {
         return false;
       }
 
-      await transaction.insert(
-        'episode_watch_logs',
-        log,
-        conflictAlgorithm: ConflictAlgorithm.abort,
-      );
+      await transaction.insert('episode_watch_logs', {
+        ...log,
+        'runtime_minutes':
+            log['runtime_minutes'] is int && (log['runtime_minutes'] as int) > 0
+            ? log['runtime_minutes']
+            : null,
+      }, conflictAlgorithm: ConflictAlgorithm.abort);
 
-      await transaction.update(
+      final changed = await transaction.update(
         'library_entries',
         {
           for (final key in [
@@ -71,6 +102,7 @@ class ActivityLocalDataSource {
         where: 'show_id = ?',
         whereArgs: [updatedLibraryEntry['show_id']],
       );
+      if (changed != 1) throw StateError('watch-progress-not-saved');
 
       return true;
     });
@@ -87,12 +119,19 @@ class ActivityLocalDataSource {
       final showId = currentLibraryEntry['show_id'];
       final saved = await transaction.query(
         'library_entries',
-        columns: ['show_id'],
+        columns: [
+          'show_id',
+          'status',
+          'last_season',
+          'last_episode',
+          'last_episode_id',
+        ],
         where: 'show_id = ?',
         whereArgs: [showId],
         limit: 1,
       );
       if (saved.isEmpty) return null;
+      final entry = saved.single;
 
       final logs = await transaction.query(
         'episode_watch_logs',
@@ -123,45 +162,52 @@ class ActivityLocalDataSource {
       } else if (logs.length > 1) {
         final previousLog = logs[1];
 
-        restoredStatus = currentLibraryEntry['status'] as String? ?? 'watching';
+        restoredStatus = entry['status'] as String? ?? 'watching';
         restoredSeason = previousLog['season'] as int?;
         restoredEpisodeNumber = previousLog['episode_number'] as int?;
         restoredEpisodeId = previousLog['episode_id'] as int?;
       } else {
-        restoredStatus = currentLibraryEntry['status'] as String? ?? 'watching';
+        restoredStatus = entry['status'] as String? ?? 'watching';
         restoredSeason = null;
         restoredEpisodeNumber = null;
         restoredEpisodeId = null;
       }
 
-      final updatedEntry = Map<String, Object?>.from(currentLibraryEntry)
-        ..['status'] = restoredStatus
-        ..['last_season'] = restoredSeason
-        ..['last_episode'] = restoredEpisodeNumber
-        ..['last_episode_id'] = restoredEpisodeId
-        ..['updated_at'] = DateTime.now().toUtc().toIso8601String();
+      final stillAtRecordedEpisode =
+          entry['last_season'] == latest['season'] &&
+          entry['last_episode'] == latest['episode_number'] &&
+          (entry['last_episode_id'] == null ||
+              entry['last_episode_id'] == latest['episode_id']);
+      final statusAfterRecord = latest['previous_status'] == 'watchlist'
+          ? 'watching'
+          : latest['previous_status'];
+      // Undo removes the watch event. Restore progress only while it still
+      // points at that event, and preserve a later manual status selection.
+      final shouldRestoreStatus =
+          !hasStoredPreviousState || entry['status'] == statusAfterRecord;
 
-      await transaction.delete(
+      final removed = await transaction.delete(
         'episode_watch_logs',
         where: 'id = ?',
         whereArgs: [latest['id']],
       );
+      if (removed != 1) throw StateError('watch-event-not-removed');
 
-      await transaction.update(
-        'library_entries',
-        {
-          for (final key in [
-            'status',
-            'last_season',
-            'last_episode',
-            'last_episode_id',
-            'updated_at',
-          ])
-            key: updatedEntry[key],
-        },
-        where: 'show_id = ?',
-        whereArgs: [showId],
-      );
+      if (stillAtRecordedEpisode) {
+        final changed = await transaction.update(
+          'library_entries',
+          {
+            'status': shouldRestoreStatus ? restoredStatus : entry['status'],
+            'last_season': restoredSeason,
+            'last_episode': restoredEpisodeNumber,
+            'last_episode_id': restoredEpisodeId,
+            'updated_at': DateTime.now().toUtc().toIso8601String(),
+          },
+          where: 'show_id = ?',
+          whereArgs: [showId],
+        );
+        if (changed != 1) throw StateError('watch-progress-not-restored');
+      }
 
       return latest;
     });

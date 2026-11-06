@@ -1,7 +1,29 @@
 {
-  "indexes": [],
+  "indexes": [
+    {"collectionGroup": "communityComments", "queryScope": "COLLECTION", "fields": [
+      {"fieldPath": "contentKey", "order": "ASCENDING"},
+      {"fieldPath": "status", "order": "ASCENDING"},
+      {"fieldPath": "createdAt", "order": "DESCENDING"}
+    ]},
+    {"collectionGroup": "communityComments", "queryScope": "COLLECTION", "fields": [
+      {"fieldPath": "authorUid", "order": "ASCENDING"},
+      {"fieldPath": "contentKey", "order": "ASCENDING"},
+      {"fieldPath": "status", "order": "ASCENDING"},
+      {"fieldPath": "createdAt", "order": "DESCENDING"}
+    ]},
+    {"collectionGroup": "communityComments", "queryScope": "COLLECTION", "fields": [
+      {"fieldPath": "status", "order": "ASCENDING"},
+      {"fieldPath": "createdAt", "order": "ASCENDING"}
+    ]}
+  ],
   "fieldOverrides": [
     {"collectionGroup": "chunks", "fieldPath": "payload", "indexes": []},
-    {"collectionGroup": "backups", "fieldPath": "sha256", "indexes": []}
+    {"collectionGroup": "backups", "fieldPath": "sha256", "indexes": []},
+    {"collectionGroup": "communityComments", "fieldPath": "body", "indexes": []},
+    {"collectionGroup": "communityComments", "fieldPath": "authorName", "indexes": []},
+    {"collectionGroup": "communityProfiles", "fieldPath": "nickname", "indexes": []},
+    {"collectionGroup": "authors", "fieldPath": "blockedUid", "indexes": [
+      {"order": "ASCENDING", "queryScope": "COLLECTION_GROUP"}
+    ]}
   ]
 }

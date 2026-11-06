@@ -73,6 +73,7 @@ class FirestoreAccountStore {
         await deleteSnapshot(firestore, backup.reference);
       }
     }
+    await _eraseCommunityData();
     // Refresh the replay-protection window immediately before Auth deletion,
     // including retries where a previous attempt already removed the root.
     await firestore.runTransaction((tx) async {
@@ -81,6 +82,58 @@ class FirestoreAccountStore {
       if (existing.exists) tx.delete(user);
     });
     return nonce;
+  }
+
+  /// The replay lock above prevents posts/reports/profile changes from racing
+  /// this purge. Other authors' replies remain independent; no deleted author's
+  /// text/name is retained in a parent tombstone or a report snapshot.
+  Future<void> _eraseCommunityData() async {
+    await _deletePages(
+      firestore
+          .collection('communityComments')
+          .where('authorUid', isEqualTo: uid)
+          .limit(50),
+    );
+    while (true) {
+      final refs = await user
+          .collection('communityReportRefs')
+          .limit(50)
+          .get(const GetOptions(source: Source.server));
+      if (refs.docs.isEmpty) break;
+      final batch = firestore.batch();
+      for (final ref in refs.docs) {
+        batch.delete(firestore.collection('communityReports').doc(ref.id));
+        batch.delete(ref.reference);
+      }
+      await batch.commit();
+    }
+    await _deletePages(
+      firestore
+          .collection('communityBlocks')
+          .doc(uid)
+          .collection('authors')
+          .limit(50),
+    );
+    final profile = firestore.collection('communityProfiles').doc(uid);
+    await firestore.runTransaction((tx) async {
+      final existing = await tx.get(profile);
+      if (!existing.exists) return;
+      final handle = existing.data()!['handle'] as String;
+      tx.delete(firestore.collection('communityHandles').doc(handle));
+      tx.delete(profile);
+    });
+  }
+
+  Future<void> _deletePages(Query<Map<String, dynamic>> query) async {
+    while (true) {
+      final page = await query.get(const GetOptions(source: Source.server));
+      if (page.docs.isEmpty) break;
+      final batch = firestore.batch();
+      for (final doc in page.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    }
   }
 
   static Future<void> deleteSnapshot(
@@ -164,7 +217,9 @@ class DeletionRecoveryStore {
     try {
       await _tail;
       for (final entry in _records().entries) {
-        if (entry.key.isEmpty || entry.key.contains('/') || entry.value is! Map) {
+        if (entry.key.isEmpty ||
+            entry.key.contains('/') ||
+            entry.value is! Map) {
           continue;
         }
         final record = Map<String, dynamic>.from(entry.value as Map);

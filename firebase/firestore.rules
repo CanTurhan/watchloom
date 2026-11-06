@@ -31,6 +31,170 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(uid)/backups/$(backupId)).data.createdAt
           < request.time - duration.value(1, 'd');
     }
+    // Community publishing is fail-closed and separately enabled by an owner
+    // operator. Clients can never approve, trust, or moderate their own posts.
+    function communityReady() {
+      let config = get(/databases/$(database)/documents/communityConfig/current).data;
+      return config.enabled == true && config.moderationReady == true && config.rulesVersion == 1;
+    }
+    function moderator() {
+      return request.auth != null && verified(request.auth.uid)
+        && !exists(/databases/$(database)/documents/deletionMarkers/$(request.auth.uid))
+        && get(/databases/$(database)/documents/communityModerators/$(request.auth.uid)).data.active == true;
+    }
+    function identityValid(data) {
+      return data.schema == 1 && data.handle is string
+        && data.handle.matches('^[a-z][a-z0-9_]{2,19}$')
+        && (data.nickname == null || (data.nickname is string
+          && data.nickname.matches('^[\\p{L}\\p{M}\\p{N} _-]{3,24}$')))
+        && data.displayMode in ['handle', 'nickname']
+        && (data.displayMode != 'nickname' || data.nickname != null)
+        && data.acceptedPolicyVersion == '2026-11-05';
+    }
+    function submissionCounter(before, after, kind, id, maximum, seconds) {
+      let lastAt = 'last' + kind + 'At';
+      let lastId = 'last' + kind + 'Id';
+      let window = kind == 'Post' ? 'postWindowAt' : 'reportWindowAt';
+      let count = kind == 'Post' ? 'postsInWindow' : 'reportsInWindow';
+      return after.diff(before).affectedKeys().hasOnly([lastAt, lastId, window, count])
+        && after[lastAt] == request.time && after[lastId] == id
+        && request.time >= before[lastAt] + duration.value(seconds, 's')
+        && after[count] is int && after[count] >= 1 && after[count] <= maximum
+        && ((request.time >= before[window] + duration.value(1, 'd')
+          && after[window] == request.time && after[count] == 1)
+        || (request.time < before[window] + duration.value(1, 'd')
+          && after[window] == before[window] && after[count] == before[count] + 1));
+    }
+    function safeBody(body) {
+      // Unicode letters/marks/numbers/punctuation/symbols include emoji and
+      // international text, but exclude invisible format/bidi/control points.
+      // Approval remains mandatory: a word list cannot recognize all abuse.
+      return body is string && body.size() >= 1 && body.size() <= 1200
+        && body.matches('^[\\p{L}\\p{M}\\p{N}\\p{P}\\p{S} \\n]+$')
+        && !body.lower().matches('[\\s\\S]*(https?:|www\\.|@)[\\s\\S]*')
+        && !body.lower().matches('[\\s\\S]*(^|[^a-z])(fuck|shit|bitch|nigger|nigga|cunt|orospu|siktir|sikik|amk|aq)([^a-z]|$)[\\s\\S]*');
+    }
+    function validReply(parentId, contentKey, uid) {
+      let parent = get(/databases/$(database)/documents/communityComments/$(parentId)).data;
+      return parent.status == 'approved' && parent.contentKey == contentKey
+        && parent.parentId == null
+        && !exists(/databases/$(database)/documents/deletionMarkers/$(parent.authorUid))
+        && !exists(/databases/$(database)/documents/communityBlocks/$(uid)/authors/$(parent.authorUid))
+        && !exists(/databases/$(database)/documents/communityBlocks/$(parent.authorUid)/authors/$(uid));
+    }
+    match /communityConfig/{id} {
+      allow get: if id == 'current';
+      allow list, write: if false;
+    }
+    match /communityModerators/{uid} {
+      allow get: if owns(uid);
+      allow list, write: if false;
+    }
+    match /communityHandles/{handle} {
+      // Another person's handle reservation never discloses their UID.
+      allow get: if request.auth != null && active(request.auth.uid)
+        && (!exists(/databases/$(database)/documents/communityHandles/$(handle))
+          || resource.data.uid == request.auth.uid);
+      allow list: if false;
+      allow create: if request.auth != null && active(request.auth.uid)
+        && handle.matches('^[a-z][a-z0-9_]{2,19}$')
+        && request.resource.data.keys().hasOnly(['uid', 'createdAt'])
+        && request.resource.data.uid == request.auth.uid && request.resource.data.createdAt == request.time
+        && getAfter(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.handle == handle;
+      allow update: if false;
+      allow delete: if erasing(resource.data.uid)
+        && !existsAfter(/databases/$(database)/documents/communityProfiles/$(resource.data.uid));
+    }
+    match /communityProfiles/{uid} {
+      allow get: if (owns(uid) && (active(uid) || erasing(uid))) || moderator();
+      allow list: if false;
+      allow create: if active(uid) && identityValid(request.resource.data)
+        && request.resource.data.keys().hasOnly(['schema', 'handle', 'nickname', 'displayMode',
+          'createdAt', 'updatedAt', 'lastPostAt', 'lastPostId', 'postWindowAt', 'postsInWindow',
+          'lastReportAt', 'lastReportId', 'reportWindowAt', 'reportsInWindow', 'acceptedPolicyVersion', 'acceptedPolicyAt'])
+        && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
+        && request.resource.data.acceptedPolicyAt == request.time
+        && request.resource.data.lastPostAt == timestamp.value(0) && request.resource.data.lastPostId == null
+        && request.resource.data.postWindowAt == timestamp.value(0) && request.resource.data.postsInWindow == 0
+        && request.resource.data.lastReportAt == timestamp.value(0) && request.resource.data.lastReportId == null
+        && request.resource.data.reportWindowAt == timestamp.value(0) && request.resource.data.reportsInWindow == 0
+        && getAfter(/databases/$(database)/documents/communityHandles/$(request.resource.data.handle)).data.uid == uid;
+      allow update: if active(uid) && identityValid(request.resource.data) && (
+        (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'displayMode', 'updatedAt', 'acceptedPolicyVersion', 'acceptedPolicyAt'])
+          && request.resource.data.updatedAt == request.time && request.resource.data.acceptedPolicyAt == request.time)
+        || (communityReady() && submissionCounter(resource.data, request.resource.data, 'Post', request.resource.data.lastPostId, 20, 30)
+          && !exists(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId))
+          && getAfter(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId)).data.authorUid == uid)
+        || (submissionCounter(resource.data, request.resource.data, 'Report', request.resource.data.lastReportId, 5, 60)
+          && !exists(/databases/$(database)/documents/communityReports/$(request.resource.data.lastReportId))
+          && getAfter(/databases/$(database)/documents/communityReports/$(request.resource.data.lastReportId)).data.reporterUid == uid)
+      );
+      allow delete: if erasing(uid)
+        && !existsAfter(/databases/$(database)/documents/communityHandles/$(resource.data.handle));
+    }
+    match /communityComments/{commentId} {
+      allow get: if resource.data.status == 'approved' || moderator()
+        || (owns(resource.data.authorUid) && (active(resource.data.authorUid) || erasing(resource.data.authorUid)));
+      allow list: if request.query.limit <= 50 && (resource.data.status == 'approved'
+        || moderator() || (owns(resource.data.authorUid) && (active(resource.data.authorUid) || erasing(resource.data.authorUid))));
+      allow create: if request.auth != null && active(request.auth.uid) && communityReady()
+        && commentId.matches('^[A-Za-z0-9]{20}$')
+        && request.resource.data.keys().hasOnly(['schema', 'contentKey', 'contentKind', 'authorUid',
+          'authorName', 'body', 'parentId', 'isSpoiler', 'status', 'createdAt'])
+        && request.resource.data.schema == 1 && request.resource.data.authorUid == request.auth.uid
+        && request.resource.data.contentKind == 'series'
+        && request.resource.data.contentKey.matches('^tvmaze:show:[1-9][0-9]{0,9}$')
+        && request.resource.data.status == 'pending' && request.resource.data.createdAt == request.time
+        && request.resource.data.isSpoiler is bool && safeBody(request.resource.data.body)
+        && get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.acceptedPolicyVersion == '2026-11-05'
+        && request.resource.data.authorName == (
+          get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.displayMode == 'nickname'
+          ? get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.nickname
+          : '@' + get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.handle)
+        && getAfter(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.lastPostId == commentId
+        && getAfter(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.lastPostAt == request.time
+        && (request.resource.data.parentId == null || (request.resource.data.parentId is string
+          && request.resource.data.parentId.matches('^[A-Za-z0-9]{20}$')
+          && validReply(request.resource.data.parentId, request.resource.data.contentKey, request.auth.uid)));
+      allow update: if false;
+      allow delete: if owns(resource.data.authorUid)
+        && (active(resource.data.authorUid) || erasing(resource.data.authorUid));
+    }
+    match /communityReports/{reportId} {
+      allow get: if moderator();
+      allow list: if moderator() && request.query.limit <= 50;
+      allow create: if request.auth != null && active(request.auth.uid)
+        && reportId.matches('^[A-Za-z0-9]{20}$')
+        && request.resource.data.keys().hasOnly(['commentId', 'reporterUid', 'reason', 'createdAt'])
+        && request.resource.data.reporterUid == request.auth.uid
+        && request.resource.data.commentId.matches('^[A-Za-z0-9]{20}$')
+        && request.resource.data.reason in ['abuse', 'hate', 'sexual', 'spam', 'spoiler', 'other']
+        && request.resource.data.createdAt == request.time
+        && get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.acceptedPolicyVersion == '2026-11-05'
+        && get(/databases/$(database)/documents/communityComments/$(request.resource.data.commentId)).data.status == 'approved'
+        && get(/databases/$(database)/documents/communityComments/$(request.resource.data.commentId)).data.authorUid != request.auth.uid
+        && getAfter(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.lastReportId == reportId
+        && getAfter(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.lastReportAt == request.time
+        && getAfter(/databases/$(database)/documents/users/$(request.auth.uid)/communityReportRefs/$(reportId)).data.reportId == reportId;
+      allow update: if false;
+      // Blind cleanup is available only after fresh-auth deletion lock. A
+      // reporter never gains read access to the private moderation queue.
+      allow delete: if request.auth != null && erasing(request.auth.uid)
+        && ((exists(/databases/$(database)/documents/communityReports/$(reportId))
+            && resource.data.reporterUid == request.auth.uid)
+          || (!exists(/databases/$(database)/documents/communityReports/$(reportId))
+            && exists(/databases/$(database)/documents/users/$(request.auth.uid)/communityReportRefs/$(reportId))));
+    }
+    match /communityBlocks/{uid}/authors/{blockedUid} {
+      allow get: if owns(uid) && (active(uid) || erasing(uid));
+      allow list: if owns(uid) && (active(uid) || erasing(uid)) && request.query.limit <= 100;
+      allow create: if active(uid) && blockedUid != uid && blockedUid.matches('^[A-Za-z0-9_-]{1,128}$')
+        && request.resource.data.keys().hasOnly(['blockedUid', 'createdAt'])
+        && request.resource.data.blockedUid == blockedUid && request.resource.data.createdAt == request.time
+        && exists(/databases/$(database)/documents/communityProfiles/$(blockedUid));
+      allow update: if false;
+      allow delete: if owns(uid) && (active(uid) || erasing(uid));
+    }
     match /users/{uid} {
       allow get: if owns(uid);
       allow list: if false;
@@ -60,7 +224,19 @@ service cloud.firestore {
         && existsAfter(/databases/$(database)/documents/deletionMarkers/$(uid))
       );
       allow delete: if erasing(uid)
+        // Older clients do not know about UGC. They must stop before deleting
+        // Auth/root while a community identity (and its public content) exists.
+        && !existsAfter(/databases/$(database)/documents/communityProfiles/$(uid))
         && getAfter(/databases/$(database)/documents/deletionMarkers/$(uid)).data.purgedAt == request.time;
+      match /communityReportRefs/{reportId} {
+        allow read: if owns(uid) && (active(uid) || erasing(uid));
+        allow create: if active(uid)
+          && request.resource.data.keys().hasOnly(['reportId', 'createdAt'])
+          && request.resource.data.reportId == reportId && request.resource.data.createdAt == request.time
+          && getAfter(/databases/$(database)/documents/communityReports/$(reportId)).data.reporterUid == uid;
+        allow update: if false;
+        allow delete: if erasing(uid);
+      }
       match /backups/{backupId} {
         allow read: if active(uid) || erasing(uid);
         allow create: if active(uid) && backupId.size() == 36
@@ -96,6 +272,7 @@ service cloud.firestore {
           || getAfter(/databases/$(database)/documents/users/$(uid)).data.status == 'deleting');
       allow update: if (
         erasing(uid) && !existsAfter(/databases/$(database)/documents/users/$(uid))
+        && !existsAfter(/databases/$(database)/documents/communityProfiles/$(uid))
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['purgedAt'])
         && request.resource.data.purgedAt == request.time
       ) || (

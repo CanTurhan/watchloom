@@ -64,7 +64,7 @@ watchloom_phase='local test dependencies'
 npm ci --prefix firebase/tests --no-audit --no-fund
 watchloom_phase='local security-rule tests'
 firebase emulators:exec --project demo-watchloom --only auth,firestore \
-  'node --test firebase/tests/rules.test.cjs'
+  'node --test --test-concurrency=1 firebase/tests/rules.test.cjs firebase/tests/community.test.cjs'
 if [[ "$watchloom_action" == '--check' ]]; then
   echo 'Local Spark security tests passed. No cloud changes requested.'
   exit 0

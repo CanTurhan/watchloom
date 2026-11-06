@@ -6,6 +6,8 @@ import 'package:watchloom/core/localization/app_activity_strings.dart';
 import 'package:watchloom/core/localization/app_library_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/core/widgets/app_page_header.dart';
+import 'package:watchloom/core/localization/app_show_strings.dart';
 import 'package:watchloom/features/activity/domain/entities/episode_watch_log.dart';
 import 'package:watchloom/features/activity/presentation/controllers/watch_activity_controller.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
@@ -647,48 +649,23 @@ class _HomeHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final scope = AppScope.of(context);
 
-    return Row(
-      children: [
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'WATCHLOOM',
-                style: TextStyle(
-                  color: AppColors.accentSoft,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w800,
-                  letterSpacing: 2.4,
-                ),
+    return AppPageHeader(
+      title: strings.tagline,
+      eyebrow: 'WATCHLOOM',
+      action: IconButton.filledTonal(
+        tooltip: strings.searchShows,
+        onPressed: () {
+          Navigator.of(context).push(
+            MaterialPageRoute<void>(
+              builder: (_) => ShowSearchPage(
+                showRepository: scope.showRepository,
+                autofocus: true,
               ),
-              const SizedBox(height: 6),
-              Text(
-                strings.tagline,
-                style: const TextStyle(
-                  color: AppColors.textPrimary,
-                  fontSize: 24,
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: -0.7,
-                ),
-              ),
-            ],
-          ),
-        ),
-        IconButton.filledTonal(
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => ShowSearchPage(
-                  showRepository: scope.showRepository,
-                  autofocus: true,
-                ),
-              ),
-            );
-          },
-          icon: const Icon(Icons.search_rounded),
-        ),
-      ],
+            ),
+          );
+        },
+        icon: const Icon(Icons.search_rounded),
+      ),
     );
   }
 }
@@ -776,24 +753,29 @@ class _ContinueWatchingCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return SizedBox(
-      height: 306,
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 306),
       child: ClipRRect(
         borderRadius: BorderRadius.circular(28),
         child: Stack(
-          fit: StackFit.expand,
           children: [
-            _BackdropImage(url: entry.imageOriginal ?? entry.imageMedium),
-            const DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0x33000000),
-                    Color(0x9911131C),
-                    Color(0xFF11131C),
-                  ],
+            Positioned.fill(
+              child: _BackdropImage(
+                url: entry.imageOriginal ?? entry.imageMedium,
+              ),
+            ),
+            const Positioned.fill(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Color(0x33000000),
+                      Color(0x9911131C),
+                      Color(0xFF11131C),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -801,6 +783,7 @@ class _ContinueWatchingCard extends StatelessWidget {
               padding: const EdgeInsets.all(21),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Align(
                     alignment: Alignment.topRight,
@@ -822,7 +805,7 @@ class _ContinueWatchingCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const Spacer(),
+                  const SizedBox(height: 40),
                   Text(
                     entry.name,
                     maxLines: 2,
@@ -859,8 +842,7 @@ class _ContinueWatchingCard extends StatelessWidget {
                               : const Icon(Icons.check_rounded),
                           label: Text(
                             strings.markNextEpisodeAction,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                            textAlign: TextAlign.center,
                           ),
                         ),
                       ),

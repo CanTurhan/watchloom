@@ -1,4 +1,3 @@
-import 'package:watchloom/core/localization/app_settings_strings.dart';
 import 'package:watchloom/core/monetization/watchloom_banner.dart';
 import 'package:watchloom/core/monetization/ad_privacy_gate.dart';
 import 'dart:async';
@@ -17,7 +16,6 @@ import 'package:watchloom/features/library/presentation/pages/library_page.dart'
 import 'package:watchloom/features/profile/presentation/profile_page.dart';
 import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
 import 'package:watchloom/features/shows/presentation/show_search_page.dart';
-import 'package:watchloom/features/settings/presentation/pages/settings_hub_page.dart';
 
 class MainShell extends StatefulWidget {
   const MainShell({required this.localeController, super.key});
@@ -248,40 +246,6 @@ class _MainShellState extends State<MainShell> {
     }
   }
 
-  void _openSettings() {
-    Navigator.of(
-      context,
-    ).push(MaterialPageRoute<void>(builder: (_) => const SettingsHubPage()));
-  }
-
-  Widget? _buildFloatingActionButton(AppStrings strings) {
-    if (_selectedIndex == 3) {
-      return FloatingActionButton.extended(
-        heroTag: 'month-story-share',
-        onPressed: _isSharingStory ? null : _shareMonthStory,
-        icon: _isSharingStory
-            ? const SizedBox(
-                width: 19,
-                height: 19,
-                child: CircularProgressIndicator(strokeWidth: 2),
-              )
-            : const Icon(Icons.ios_share_rounded),
-        label: Text(strings.shareMonthStory),
-      );
-    }
-
-    if (_selectedIndex == 4) {
-      return FloatingActionButton.extended(
-        heroTag: 'notification-settings',
-        onPressed: _openSettings,
-        icon: const Icon(Icons.notifications_rounded),
-        label: Text(strings.settingsTitle),
-      );
-    }
-
-    return null;
-  }
-
   @override
   Widget build(BuildContext context) {
     final strings = AppStrings.of(context);
@@ -291,7 +255,10 @@ class _MainShellState extends State<MainShell> {
       const HomePage(),
       const LibraryPage(),
       ShowSearchPage(showRepository: scope.showRepository),
-      const MyMonthPage(),
+      MyMonthPage(
+        onShare: _isSharingStory ? null : _shareMonthStory,
+        isSharing: _isSharingStory,
+      ),
       ProfilePage(localeController: widget.localeController),
     ];
 
@@ -300,7 +267,6 @@ class _MainShellState extends State<MainShell> {
       privacy: scope.adPrivacyController,
       child: Scaffold(
         body: IndexedStack(index: _selectedIndex, children: pages),
-        floatingActionButton: _buildFloatingActionButton(strings),
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

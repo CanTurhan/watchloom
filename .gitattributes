@@ -1,0 +1,3 @@
+# Generated reproductions retain upstream license whitespace verbatim.
+docs/licenses.html -whitespace
+docs/software-notices.txt -whitespace

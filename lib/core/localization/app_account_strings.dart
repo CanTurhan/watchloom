@@ -113,8 +113,8 @@ extension AppAccountStrings on AppStrings {
   );
   String get deleteAccount => value(en: 'Delete account', tr: 'Hesabımı sil');
   String get deleteAccountBody => value(
-    en: 'Permanently delete your Watchloom account, cloud backups and this account’s data on this device. Your separate guest library is kept. You will be asked to authenticate again. This does not cancel your Apple subscription; manage it separately in Apple subscription settings.',
-    tr: 'Watchloom hesabın, bulut yedeklerin ve bu hesaba ait bu cihazdaki veriler kalıcı olarak silinir. Ayrı misafir kütüphanen korunur. Kimliğini yeniden doğrulaman istenir. Bu işlem Apple aboneliğini iptal etmez; aboneliğini Apple abonelik ayarlarından ayrıca yönet.',
+    en: 'Permanently delete your Watchloom account, cloud backups, community profile, your comments and replies, your reports and block preferences, and this account’s data on this device. Replies written by others can remain without your original comment. Your separate guest library is kept. You will be asked to authenticate again and need an internet connection. This does not cancel your Apple subscription; manage it separately in Apple subscription settings.',
+    tr: 'Watchloom hesabın, bulut yedeklerin, topluluk profilin, kendi yorum ve yanıtların, şikâyet ve engelleme tercihlerin ve bu hesaba ait bu cihazdaki veriler kalıcı olarak silinir. Başkalarının yanıtları, senin yorumun olmadan kalabilir. Ayrı misafir kütüphanen korunur. Kimliğini yeniden doğrulaman ve internet bağlantısı gerekir. Bu işlem Apple aboneliğini iptal etmez; aboneliğini Apple abonelik ayarlarından ayrıca yönet.',
   );
   String get deleteAccountConfirm =>
       value(en: 'Delete permanently', tr: 'Kalıcı olarak sil');

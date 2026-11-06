@@ -34,9 +34,11 @@ if [[ "$release_action" == '--upload-existing' ]]; then
 fi
 
 "$flutter_bin" pub get --offline
+python3 scripts/sync_web_licenses.py --check
+python3 scripts/sync_community_notices.py --check
 "$flutter_bin" analyze --no-pub lib test
 python3 -m unittest discover -s scripts -p 'test_*.py'
-node --test scripts/test_firebase_spark.cjs scripts/test_firebase_apple.cjs
+node --test scripts/test_firebase_spark.cjs scripts/test_firebase_apple.cjs scripts/community_moderation_test.cjs
 
 if [[ "${WATCHLOOM_TEST_RUNNER:-}" == 'lightweight' ]]; then
   # Flutter's lightweight runner does not need a localhost debugging socket.
@@ -88,6 +90,7 @@ if [[ "$release_action" == '--archive-xcode' || "$release_action" == '--upload-t
     --dart-define=WATCHLOOM_TEST_ADS=true
   (cd ios && pod install)
   python3 scripts/sync_ios_licenses.py
+  python3 scripts/sync_web_licenses.py --check
   mkdir -p build/release-audit
   result_directory="$(mktemp -d "$project_dir/build/release-audit/native-build.XXXXXX")"
   xcodebuild -workspace "$project_dir/ios/Runner.xcworkspace" -scheme Runner \

@@ -11,6 +11,8 @@ import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
 import 'package:watchloom/features/shows/presentation/widgets/show_detail_personal_panel.dart';
+import 'package:watchloom/features/community/presentation/community_page.dart';
+import 'package:watchloom/features/community/presentation/community_strings.dart';
 
 class ShowDetailPage extends StatefulWidget {
   const ShowDetailPage({
@@ -147,6 +149,20 @@ class _ShowDetailPageState extends State<ShowDetailPage> {
                       ),
                     );
                   },
+                ),
+                const SizedBox(height: 14),
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.forum_outlined),
+                    title: Text(CommunityStrings.of(context).title),
+                    subtitle: Text(CommunityStrings.of(context).subtitle),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => CommunityPage.open(
+                      context,
+                      showId: _show.id,
+                      seriesName: _show.name,
+                    ),
+                  ),
                 ),
                 const SizedBox(height: 26),
                 _SectionTitle(strings.summaryTitle),

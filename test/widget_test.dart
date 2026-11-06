@@ -26,6 +26,8 @@ import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
 import 'package:watchloom/features/premium/presentation/subscription_controller.dart';
+import 'package:watchloom/features/profile/presentation/profile_page.dart';
+import 'package:watchloom/features/settings/presentation/settings_page.dart';
 import 'helpers/fake_subscription_repository.dart';
 
 void main() {
@@ -127,6 +129,55 @@ void main() {
   }
 
   for (final language in ['en', 'tr']) {
+    testWidgets(
+      'profile has a single settings entry and one complete settings flow ($language)',
+      (tester) async {
+        tester.view.physicalSize = const Size(320, 760);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        SharedPreferences.setMockInitialValues({
+          'watchloom_language': language,
+        });
+        final locale = await AppLocaleController.create();
+        addTearDown(locale.dispose);
+        final store = FakeSubscriptionRepository();
+        final premium = SubscriptionController(store);
+        addTearDown(() async {
+          premium.dispose();
+          await store.close();
+        });
+        await premiumHarness(
+          tester,
+          premium,
+          locale: Locale(language),
+          textScale: 1.8,
+          home: ProfilePage(localeController: locale),
+        );
+        expect(find.byIcon(Icons.settings_rounded), findsOneWidget);
+        await tester.tap(find.byKey(const ValueKey('profile-settings')));
+        await tester.pumpAndSettle();
+        expect(find.byType(SettingsPage), findsOneWidget);
+        expect(
+          find.text(language == 'tr' ? 'Dil' : 'Language'),
+          findsOneWidget,
+        );
+        await tester.scrollUntilVisible(
+          find.byIcon(Icons.notifications_outlined),
+          180,
+          scrollable: find.byType(Scrollable).last,
+        );
+        expect(find.byIcon(Icons.notifications_outlined), findsOneWidget);
+        await tester.scrollUntilVisible(
+          find.byIcon(Icons.code_rounded),
+          180,
+          scrollable: find.byType(Scrollable).last,
+        );
+        expect(find.byIcon(Icons.code_rounded), findsOneWidget);
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets(
       'monthly Premium uses the Apple price with large text ($language)',
       (tester) async {

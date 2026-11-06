@@ -3,6 +3,7 @@ import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:watchloom/features/activity/domain/entities/achievement.dart';
 import 'package:watchloom/features/activity/domain/entities/episode_watch_log.dart';
+import 'package:watchloom/features/activity/domain/entities/watch_activity_summary.dart';
 import 'package:watchloom/features/activity/domain/repositories/activity_repository.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 import 'package:watchloom/features/library/presentation/controllers/library_controller.dart';
@@ -42,11 +43,15 @@ class WatchActivityController extends ChangeNotifier {
     required ActivityRepository repository,
     required LibraryController libraryController,
     required ShowRepository showRepository,
+    DateTime Function()? now,
+    WatchDateConverter? toLocalDate,
   }) {
     return WatchActivityController._(
       repository,
       libraryController,
       showRepository,
+      now ?? DateTime.now,
+      toLocalDate ?? (instant) => instant.toLocal(),
     );
   }
 
@@ -54,11 +59,15 @@ class WatchActivityController extends ChangeNotifier {
     this._repository,
     this._libraryController,
     this._showRepository,
+    this._now,
+    this._toLocalDate,
   );
 
   final ActivityRepository _repository;
   final LibraryController _libraryController;
   final ShowRepository _showRepository;
+  final DateTime Function() _now;
+  final WatchDateConverter _toLocalDate;
   bool _disposed = false;
 
   @override
@@ -93,7 +102,30 @@ class WatchActivityController extends ChangeNotifier {
   bool get isUndoing => _isUndoing;
   Object? get error => _error;
 
-  int get totalEpisodes => _logs.length;
+  int get totalEpisodes => WatchActivityHistory.fromLogs(
+    episodeLogs: _logs,
+    asOf: _now(),
+  ).episodeLogs.length;
+
+  WatchActivitySummary get currentMonthSummary {
+    final now = _now();
+    return summaryForMonth(_toLocalDate(now), asOf: now);
+  }
+
+  WatchActivitySummary summaryForMonth(DateTime month, {DateTime? asOf}) {
+    return WatchActivitySummary.fromLogs(
+      episodeLogs: _logs,
+      month: month,
+      asOf: asOf ?? _now(),
+      toLocalDate: _toLocalDate,
+    );
+  }
+
+  WatchStreaks get streaks => WatchStreaks.fromLogs(
+    episodeLogs: _logs,
+    asOf: _now(),
+    toLocalDate: _toLocalDate,
+  );
 
   bool get canUndoLatest {
     if (_logs.isEmpty || _isUndoing) {
@@ -103,40 +135,28 @@ class WatchActivityController extends ChangeNotifier {
     return _libraryController.findByShowId(_logs.first.showId) != null;
   }
 
-  int get monthEpisodeCount {
-    return logsForMonth(DateTime.now()).length;
-  }
+  int get monthEpisodeCount => currentMonthSummary.episodeCount;
 
-  int get monthShowCount {
-    return logsForMonth(DateTime.now()).map((log) => log.showId).toSet().length;
-  }
+  int get monthShowCount => currentMonthSummary.seriesCount;
 
-  int get monthWatchMinutes {
-    return logsForMonth(
-      DateTime.now(),
-    ).fold(0, (total, log) => total + (log.runtimeMinutes ?? 0));
-  }
+  int get monthWatchMinutes => currentMonthSummary.knownWatchMinutes;
 
-  int get currentDailyStreak {
-    return _calculateCurrentDailyStreak(_logs);
-  }
+  int get currentDailyStreak => streaks.currentDaily;
 
-  int get bestDailyStreak {
-    return _calculateBestDailyStreak(_logs);
-  }
+  int get bestDailyStreak => streaks.bestDaily;
 
-  int get currentMonthlyStreak {
-    return _calculateCurrentMonthlyStreak(_logs);
-  }
+  int get currentMonthlyStreak => streaks.currentMonthly;
 
   List<UnlockedAchievement> get achievementsUnlockedThisMonth {
-    final now = DateTime.now();
+    final now = _now();
+    final localNow = _toLocalDate(now);
 
     return _unlockedAchievements
         .where((achievement) {
-          final date = achievement.unlockedAt.toLocal();
+          if (achievement.unlockedAt.isAfter(now)) return false;
+          final date = _toLocalDate(achievement.unlockedAt);
 
-          return date.year == now.year && date.month == now.month;
+          return date.year == localNow.year && date.month == localNow.month;
         })
         .toList(growable: false);
   }
@@ -150,13 +170,7 @@ class WatchActivityController extends ChangeNotifier {
   }
 
   List<EpisodeWatchLog> logsForMonth(DateTime month) {
-    return _logs
-        .where((log) {
-          final date = log.watchedAt.toLocal();
-
-          return date.year == month.year && date.month == month.month;
-        })
-        .toList(growable: false);
+    return summaryForMonth(month).logs;
   }
 
   Future<void> load() async {
@@ -165,7 +179,13 @@ class WatchActivityController extends ChangeNotifier {
     notifyListeners();
 
     try {
-      _logs = await _repository.getWatchLogs();
+      // Preserve every stored row for undo; statistics use a separate,
+      // canonical read model. The repository's order is not part of its API.
+      _logs = List.of(await _repository.getWatchLogs())
+        ..sort((a, b) {
+          final date = b.watchedAt.compareTo(a.watchedAt);
+          return date != 0 ? date : (b.id ?? 0).compareTo(a.id ?? 0);
+        });
 
       _unlockedAchievements = await _repository.getUnlockedAchievements();
 
@@ -215,7 +235,7 @@ class WatchActivityController extends ChangeNotifier {
         );
       }
 
-      final now = DateTime.now();
+      final now = _now();
 
       final updatedEntry = entry.copyWith(
         status: entry.status == LibraryStatus.watchlist
@@ -234,7 +254,10 @@ class WatchActivityController extends ChangeNotifier {
           episodeId: nextEpisode.id,
           season: nextEpisode.season!,
           episodeNumber: nextEpisode.number!,
-          runtimeMinutes: nextEpisode.runtime,
+          runtimeMinutes:
+              nextEpisode.runtime != null && nextEpisode.runtime! > 0
+              ? nextEpisode.runtime
+              : null,
           watchedAt: now,
           source: WatchLogSource.manualWatch,
           previousStatus: entry.status,
@@ -246,8 +269,18 @@ class WatchActivityController extends ChangeNotifier {
       );
 
       if (!inserted) {
+        // A duplicate or a progress change while fetching episodes can reject
+        // this write. Refresh both views and only label a real event duplicate.
+        await _libraryController.load();
+        await load();
+        final alreadyRecorded = _logs.any(
+          (log) =>
+              log.showId == entry.showId && log.episodeId == nextEpisode.id,
+        );
         return MarkNextEpisodeResult(
-          status: MarkNextEpisodeStatus.alreadyRecorded,
+          status: alreadyRecorded
+              ? MarkNextEpisodeStatus.alreadyRecorded
+              : MarkNextEpisodeStatus.failed,
           episode: nextEpisode,
         );
       }
@@ -366,7 +399,7 @@ class WatchActivityController extends ChangeNotifier {
       return false;
     }
 
-    final now = DateTime.now();
+    final now = _toLocalDate(_now());
 
     final today = DateTime(now.year, now.month, now.day);
 
@@ -376,17 +409,29 @@ class WatchActivityController extends ChangeNotifier {
   }
 
   Future<bool> _unlockEligibleAchievements() async {
+    final now = _now();
+    final total = WatchActivityHistory.fromLogs(
+      episodeLogs: _logs,
+      asOf: now,
+    ).episodeLogs.length;
+    final currentStreaks = WatchStreaks.fromLogs(
+      episodeLogs: _logs,
+      asOf: now,
+      toLocalDate: _toLocalDate,
+    );
     final eligibleCodes = <String>{
-      if (totalEpisodes >= 1) AchievementCatalog.firstEpisode,
-      if (totalEpisodes >= 10) AchievementCatalog.tenEpisodes,
-      if (totalEpisodes >= 50) AchievementCatalog.fiftyEpisodes,
-      if (totalEpisodes >= 100) AchievementCatalog.hundredEpisodes,
-      if (bestDailyStreak >= 3) AchievementCatalog.threeDayStreak,
-      if (bestDailyStreak >= 7) AchievementCatalog.sevenDayStreak,
-      if (bestDailyStreak >= 14) AchievementCatalog.fourteenDayStreak,
-      if (currentMonthlyStreak >= 3) AchievementCatalog.threeMonthStreak,
-      if (currentMonthlyStreak >= 6) AchievementCatalog.sixMonthStreak,
-      if (currentMonthlyStreak >= 12) AchievementCatalog.twelveMonthStreak,
+      if (total >= 1) AchievementCatalog.firstEpisode,
+      if (total >= 10) AchievementCatalog.tenEpisodes,
+      if (total >= 50) AchievementCatalog.fiftyEpisodes,
+      if (total >= 100) AchievementCatalog.hundredEpisodes,
+      if (currentStreaks.bestDaily >= 3) AchievementCatalog.threeDayStreak,
+      if (currentStreaks.bestDaily >= 7) AchievementCatalog.sevenDayStreak,
+      if (currentStreaks.bestDaily >= 14) AchievementCatalog.fourteenDayStreak,
+      if (currentStreaks.currentMonthly >= 3)
+        AchievementCatalog.threeMonthStreak,
+      if (currentStreaks.currentMonthly >= 6) AchievementCatalog.sixMonthStreak,
+      if (currentStreaks.currentMonthly >= 12)
+        AchievementCatalog.twelveMonthStreak,
     };
 
     final unlockedCodes = _unlockedAchievements
@@ -397,128 +442,12 @@ class WatchActivityController extends ChangeNotifier {
 
     for (final code in eligibleCodes.difference(unlockedCodes)) {
       final inserted = await _repository.unlockAchievement(
-        UnlockedAchievement(code: code, unlockedAt: DateTime.now()),
+        UnlockedAchievement(code: code, unlockedAt: now),
       );
 
       unlockedAny = unlockedAny || inserted;
     }
 
     return unlockedAny;
-  }
-
-  int _calculateCurrentDailyStreak(List<EpisodeWatchLog> logs) {
-    final days = _uniqueWatchDays(logs);
-
-    if (days.isEmpty) {
-      return 0;
-    }
-
-    final now = DateTime.now();
-
-    final today = DateTime(now.year, now.month, now.day);
-
-    final latest = days.last;
-
-    final daysSinceLatest = today.difference(latest).inDays;
-
-    if (daysSinceLatest > 1) {
-      return 0;
-    }
-
-    var streak = 1;
-    var cursor = latest;
-
-    for (var index = days.length - 2; index >= 0; index--) {
-      final difference = cursor.difference(days[index]).inDays;
-
-      if (difference != 1) {
-        break;
-      }
-
-      streak++;
-      cursor = days[index];
-    }
-
-    return streak;
-  }
-
-  int _calculateBestDailyStreak(List<EpisodeWatchLog> logs) {
-    final days = _uniqueWatchDays(logs);
-
-    if (days.isEmpty) {
-      return 0;
-    }
-
-    var best = 1;
-    var current = 1;
-
-    for (var index = 1; index < days.length; index++) {
-      final difference = days[index].difference(days[index - 1]).inDays;
-
-      if (difference == 1) {
-        current++;
-        best = current > best ? current : best;
-      } else {
-        current = 1;
-      }
-    }
-
-    return best;
-  }
-
-  int _calculateCurrentMonthlyStreak(List<EpisodeWatchLog> logs) {
-    final months =
-        logs
-            .map((log) {
-              final date = log.watchedAt.toLocal();
-
-              return date.year * 12 + date.month;
-            })
-            .toSet()
-            .toList()
-          ..sort();
-
-    if (months.isEmpty) {
-      return 0;
-    }
-
-    final now = DateTime.now();
-
-    final currentMonth = now.year * 12 + now.month;
-
-    final latestMonth = months.last;
-
-    if (currentMonth - latestMonth > 1) {
-      return 0;
-    }
-
-    var streak = 1;
-    var cursor = latestMonth;
-
-    for (var index = months.length - 2; index >= 0; index--) {
-      if (months[index] != cursor - 1) {
-        break;
-      }
-
-      streak++;
-      cursor = months[index];
-    }
-
-    return streak;
-  }
-
-  List<DateTime> _uniqueWatchDays(List<EpisodeWatchLog> logs) {
-    final days =
-        logs
-            .map((log) {
-              final date = log.watchedAt.toLocal();
-
-              return DateTime(date.year, date.month, date.day);
-            })
-            .toSet()
-            .toList()
-          ..sort();
-
-    return days;
   }
 }

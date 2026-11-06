@@ -251,93 +251,106 @@ class _ShowResultCard extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        child: SizedBox(
-          height: 142,
-          child: Row(
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 142),
+          child: Stack(
             children: [
-              Hero(
-                tag: 'show-${show.id}',
-                child: SizedBox(
-                  width: 96,
-                  height: double.infinity,
-                  child: _PosterImage(imageUrl: show.imageMedium),
-                ),
-              ),
-              Expanded(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(15, 14, 12, 14),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              show.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                fontSize: 17,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ),
-                          if (show.ratingAverage != null) ...[
-                            const SizedBox(width: 8),
-                            const Icon(
-                              Icons.star_rounded,
-                              color: AppColors.yellow,
-                              size: 16,
-                            ),
-                            const SizedBox(width: 3),
-                            Text(
-                              show.ratingAverage!.toStringAsFixed(1),
-                              style: const TextStyle(
-                                fontSize: 12,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                          ],
-                        ],
-                      ),
-                      if (metadata.isNotEmpty) ...[
-                        const SizedBox(height: 7),
-                        Text(
-                          metadata.join('  ·  '),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.textSecondary,
-                            fontSize: 11,
-                            height: 1.35,
-                          ),
-                        ),
-                      ],
-                      const SizedBox(height: 8),
-                      Expanded(
-                        child: Text(
-                          show.summary.isEmpty
-                              ? AppStrings.of(context).noSummary
-                              : show.summary,
-                          maxLines: 3,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Color(0xFFC7C8D0),
-                            fontSize: 12,
-                            height: 1.4,
-                          ),
-                        ),
-                      ),
-                    ],
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: 96,
+                child: Hero(
+                  tag: 'show-${show.id}',
+                  child: SizedBox(
+                    width: 96,
+                    height: double.infinity,
+                    child: _PosterImage(imageUrl: show.imageMedium),
                   ),
                 ),
               ),
-              const Padding(
-                padding: EdgeInsets.only(right: 8),
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: AppColors.textSecondary,
+              Padding(
+                padding: const EdgeInsets.only(left: 96),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(15, 14, 12, 14),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    show.name,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: const TextStyle(
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ),
+                                if (show.ratingAverage != null) ...[
+                                  const SizedBox(width: 8),
+                                  const Icon(
+                                    Icons.star_rounded,
+                                    color: AppColors.yellow,
+                                    size: 16,
+                                  ),
+                                  const SizedBox(width: 3),
+                                  Text(
+                                    show.ratingAverage!.toStringAsFixed(1),
+                                    style: const TextStyle(
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w700,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                            if (metadata.isNotEmpty) ...[
+                              const SizedBox(height: 7),
+                              Text(
+                                metadata.join('  ·  '),
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  color: AppColors.textSecondary,
+                                  fontSize: 11,
+                                  height: 1.35,
+                                ),
+                              ),
+                            ],
+                            const SizedBox(height: 8),
+                            Text(
+                              show.summary.isEmpty
+                                  ? AppStrings.of(context).noSummary
+                                  : show.summary,
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: Color(0xFFC7C8D0),
+                                fontSize: 12,
+                                height: 1.4,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.only(right: 8),
+                      child: Icon(
+                        Icons.chevron_right_rounded,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],

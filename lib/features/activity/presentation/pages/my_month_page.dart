@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_activity_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
+import 'package:watchloom/core/localization/app_story_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/core/widgets/app_page_header.dart';
 import 'package:watchloom/features/activity/domain/entities/episode_watch_log.dart';
+import 'package:watchloom/features/activity/presentation/widgets/monthly_activity_summary_card.dart';
 
 class MyMonthPage extends StatelessWidget {
-  const MyMonthPage({super.key});
+  const MyMonthPage({this.onShare, this.isSharing = false, super.key});
+  final VoidCallback? onShare;
+  final bool isSharing;
 
   @override
   Widget build(BuildContext context) {
@@ -18,8 +23,8 @@ class MyMonthPage extends StatelessWidget {
       child: ListenableBuilder(
         listenable: controller,
         builder: (context, child) {
-          final now = DateTime.now();
-          final monthLogs = controller.logsForMonth(now);
+          final summary = controller.currentMonthSummary;
+          final monthLogs = summary.logs;
 
           return RefreshIndicator(
             onRefresh: controller.load,
@@ -27,30 +32,30 @@ class MyMonthPage extends StatelessWidget {
               physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
               children: [
-                Text(
-                  strings.myMonth,
-                  style: const TextStyle(
-                    fontSize: 30,
-                    fontWeight: FontWeight.w900,
-                    letterSpacing: -0.8,
-                  ),
-                ),
-                const SizedBox(height: 5),
-                Text(
-                  '${strings.monthName(now.month)} ${now.year}',
-                  style: const TextStyle(
-                    color: AppColors.accentSoft,
-                    fontSize: 14,
-                    fontWeight: FontWeight.w700,
-                  ),
+                AppPageHeader(
+                  title: strings.myMonth,
+                  action: onShare == null && !isSharing
+                      ? null
+                      : IconButton.filledTonal(
+                          tooltip: strings.shareMonthStory,
+                          onPressed: onShare,
+                          icon: isSharing
+                              ? const SizedBox.square(
+                                  dimension: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                )
+                              : const Icon(Icons.ios_share_rounded),
+                        ),
+                  eyebrow:
+                      '${strings.monthName(summary.month)} ${summary.year}',
+                  subtitle: strings.isTurkish
+                      ? 'Her bölüm, ayının bir parçası.'
+                      : 'Every episode is part of your story.',
                 ),
                 const SizedBox(height: 24),
-                _MonthlySummaryCard(
-                  episodes: controller.monthEpisodeCount,
-                  shows: controller.monthShowCount,
-                  minutes: controller.monthWatchMinutes,
-                  strings: strings,
-                ),
+                MonthlyActivitySummaryCard(summary: summary),
                 const SizedBox(height: 14),
                 Row(
                   children: [
@@ -140,76 +145,6 @@ class MyMonthPage extends StatelessWidget {
   }
 }
 
-class _MonthlySummaryCard extends StatelessWidget {
-  const _MonthlySummaryCard({
-    required this.episodes,
-    required this.shows,
-    required this.minutes,
-    required this.strings,
-  });
-
-  final int episodes;
-  final int shows;
-  final int minutes;
-  final AppStrings strings;
-
-  @override
-  Widget build(BuildContext context) {
-    final hours = minutes ~/ 60;
-    final remainingMinutes = minutes % 60;
-
-    final watchTime = hours > 0
-        ? '${hours}h ${remainingMinutes}m'
-        : '${remainingMinutes}m';
-
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.accent.withValues(alpha: 0.25)),
-      ),
-      child: Row(
-        children: [
-          _SummaryValue(value: '$episodes', label: strings.episodes),
-          _SummaryValue(value: '$shows', label: strings.shows),
-          _SummaryValue(value: watchTime, label: strings.watchTimeLabel),
-        ],
-      ),
-    );
-  }
-}
-
-class _SummaryValue extends StatelessWidget {
-  const _SummaryValue({required this.value, required this.label});
-
-  final String value;
-  final String label;
-
-  @override
-  Widget build(BuildContext context) {
-    return Expanded(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            value,
-            style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            label,
-            style: const TextStyle(
-              color: AppColors.textSecondary,
-              fontSize: 10,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _StreakCard extends StatelessWidget {
   const _StreakCard({
     required this.icon,
@@ -228,7 +163,7 @@ class _StreakCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 145,
+      constraints: const BoxConstraints(minHeight: 145),
       padding: const EdgeInsets.all(17),
       decoration: BoxDecoration(
         color: AppColors.surface,
@@ -236,9 +171,10 @@ class _StreakCard extends StatelessWidget {
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, color: iconColor),
-          const Spacer(),
+          const SizedBox(height: 24),
           Text(
             '$value $suffix',
             style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900),

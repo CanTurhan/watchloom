@@ -4,6 +4,7 @@ import 'package:watchloom/core/localization/app_activity_strings.dart';
 import 'package:watchloom/core/localization/app_locale_controller.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/core/widgets/app_page_header.dart';
 import 'package:watchloom/features/activity/domain/entities/achievement.dart';
 import 'package:watchloom/features/settings/presentation/settings_page.dart';
 import 'package:watchloom/features/account/presentation/account_page.dart';
@@ -26,39 +27,22 @@ class ProfilePage extends StatelessWidget {
           return ListView(
             padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
             children: [
-              Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      strings.profile,
-                      style: const TextStyle(
-                        fontSize: 30,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.8,
+              AppPageHeader(
+                title: strings.profile,
+                subtitle: strings.activityProfileDescription,
+                eyebrow: 'WATCHLOOM',
+                action: IconButton.filledTonal(
+                  key: const ValueKey('profile-settings'),
+                  tooltip: strings.settings,
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) =>
+                            SettingsPage(localeController: localeController),
                       ),
-                    ),
-                  ),
-                  IconButton.filledTonal(
-                    tooltip: strings.settings,
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) =>
-                              SettingsPage(localeController: localeController),
-                        ),
-                      );
-                    },
-                    icon: const Icon(Icons.settings_rounded),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(
-                strings.activityProfileDescription,
-                style: const TextStyle(
-                  color: AppColors.textSecondary,
-                  fontSize: 14,
-                  height: 1.45,
+                    );
+                  },
+                  icon: const Icon(Icons.settings_rounded),
                 ),
               ),
               const SizedBox(height: 24),
@@ -124,26 +108,6 @@ class ProfilePage extends StatelessWidget {
                     description: strings.achievementDescription(code),
                     unlocked: controller.isAchievementUnlocked(code),
                   ),
-                ),
-              ),
-              const SizedBox(height: 18),
-              Card(
-                child: ListTile(
-                  leading: const Icon(
-                    Icons.settings_rounded,
-                    color: AppColors.accentSoft,
-                  ),
-                  title: Text(strings.settings),
-                  subtitle: Text(strings.activitySettingsDescription),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) =>
-                            SettingsPage(localeController: localeController),
-                      ),
-                    );
-                  },
                 ),
               ),
             ],

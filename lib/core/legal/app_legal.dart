@@ -5,6 +5,8 @@ abstract final class AppLegal {
   static const privacy = 'https://canturhan.github.io/watchloom/privacy.html';
   static const terms = 'https://canturhan.github.io/watchloom/terms.html';
   static const support = 'https://canturhan.github.io/watchloom/support.html';
+  static const licenses = 'https://canturhan.github.io/watchloom/licenses.html';
+  static const community = 'https://canturhan.github.io/watchloom/community.html';
   static const supportIssues =
       'https://github.com/CanTurhan/watchloom/issues/new';
   static const appleEula =
