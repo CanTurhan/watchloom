@@ -210,8 +210,13 @@ test('Spark automatic series community and vote security rules', {timeout: 18000
       assert.equal((await commit(good.slice(1), b.token)).status, 403);
       const forged = structuredClone(good); forged[0].update.fields.score = value(1000);
       assert.equal((await commit(forged, b.token)).status, 403);
-      const publish = structuredClone(good); publish[0].update.fields.status = value('approved'); publish[0].updateMask.fieldPaths.push('status');
-      assert.equal((await commit(publish, b.token)).status, 403);
+      assert.equal((await db.doc(`communityComments/${rootId}`).get()).data().status, 'approved');
+      // Writing approved again is a no-op, so MapDiff correctly ignores it.
+      // Exercise an actual forbidden status change on the approved target.
+      const changedStatus = structuredClone(good);
+      changedStatus[0].update.fields.status = value('pending');
+      changedStatus[0].updateMask.fieldPaths.push('status');
+      assert.equal((await commit(changedStatus, b.token)).status, 403);
       assert.equal((await commit(good, b.token)).status, 200);
       assert.equal((await db.doc(`communityComments/${rootId}`).get()).data().score, 1);
       assert.equal((await db.doc(`communityProfiles/${b.uid}`).get()).data().voteCount, 1);
