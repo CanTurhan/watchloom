@@ -185,6 +185,7 @@ FakeCommunityRepository _community() {
     required String text,
     String? parent,
     bool spoiler = false,
+    int score = 0,
     CommunityCommentStatus status = CommunityCommentStatus.approved,
   }) => CommunityComment(
     id: id,
@@ -197,6 +198,9 @@ FakeCommunityRepository _community() {
     status: status,
     createdAt: DateTime(2026, 11, 5, 20),
     isSpoiler: spoiler,
+    upVotes: score > 0 ? score : 0,
+    downVotes: score < 0 ? -score : 0,
+    score: score,
   );
   return FakeCommunityRepository()
     ..profileValue = const CommunityProfile(
@@ -208,6 +212,7 @@ FakeCommunityRepository _community() {
       comment(
         id: 'first',
         author: 'quiet_viewer',
+        score: 12,
         text:
             'The quiet scene at the station said more than the finale. '
             'The pacing gave every character room to breathe.',
@@ -215,6 +220,7 @@ FakeCommunityRepository _community() {
       comment(
         id: 'reply',
         author: 'orbit_reader',
+        score: 3,
         text: 'The sound design made that moment work so well.',
         parent: 'first',
       ),

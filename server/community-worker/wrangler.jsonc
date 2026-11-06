@@ -1,0 +1,14 @@
+{
+  "name": "watchloom-community",
+  "main": "src/index.mjs",
+  "compatibility_date": "2026-11-06",
+  "workers_dev": true,
+  "preview_urls": false,
+  "observability": {"enabled": false},
+  "triggers": {"crons": ["* * * * *"]},
+  "vars": {
+    "FIREBASE_PROJECT_ID": "watchloom-canturhan",
+    "OPENAI_MODEL": "omni-moderation-latest",
+    "DAILY_MODERATION_LIMIT": "500"
+  }
+}

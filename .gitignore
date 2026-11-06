@@ -60,3 +60,9 @@ app.*.map.json
 .firebase/
 .firebase-ios-apps.tmp.json
 /GoogleService-Info.plist
+# Worker credentials belong in the owner's private config directory only.
+**/.wrangler/
+**/.dev.vars
+**/.dev.vars.*
+**/worker-secrets*.json
+/server/community-worker/build/

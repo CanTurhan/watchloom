@@ -28,9 +28,12 @@ def update_block(text: str, marker: str, body: str, anchor: str) -> str:
 
 def generated(project: Path) -> dict[Path, str]:
     source = (project / 'lib/core/legal/community_policy.dart').read_text()
-    copy = dict(re.findall(r"static const (privacyEn|privacyTr|termsEn|termsTr) = '''(.*?)''';", source, re.S))
+    copy = dict(re.findall(r"static const (privacyEn|privacyTr|termsEn|termsTr) =\s*'''(.*?)''';", source, re.S))
     if len(copy) != 4:
         raise ValueError('All four in-app community notices must be present')
+    version = re.search(r"static const version = '(\d{4}-\d{2}-\d{2})[^']*';", source)
+    if version is None:
+        raise ValueError('A dated community policy version is required')
     outputs = {}
     privacy_path = project / 'docs/privacy.html'
     privacy = privacy_path.read_text()
@@ -56,7 +59,7 @@ def generated(project: Path) -> dict[Path, str]:
 <title>Community guidelines — Watchloom</title><link rel="stylesheet" href="styles.css"></head>
 <body><header><nav><a class="brand" href="./">Watchloom</a><div class="nav-links">
 <a href="support.html">Support</a><a href="privacy.html">Privacy</a><a href="terms.html">Terms</a></div></nav></header>
-<main><div class="page-title"><h1>Community / Topluluk</h1><p>2026-11-05</p></div>''' + body + '''</main>
+<main><div class="page-title"><h1>Community / Topluluk</h1><p>''' + version.group(1) + '''</p></div>''' + body + '''</main>
 <footer><a href="support.html">Report a safety concern / Güvenlik bildirimi</a> · <a href="licenses.html">Software notices</a></footer></body></html>
 '''
     return outputs

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:watchloom/app/app_scope.dart';
@@ -65,6 +66,11 @@ class _CommunityPageState extends State<CommunityPage> {
   List<CommunityComment> _comments = [];
   List<CommunityComment> _pending = [];
   Set<String> _blocks = {};
+  Map<String, int> _votes = {};
+  final Set<String> _voting = {};
+  Timer? _voteCooldown;
+  bool _voteCoolingDown = false;
+  CommunityCommentSort _sort = CommunityCommentSort.best;
   final Set<String> _revealed = {};
   CommunityProfile? _profile;
   CommunityAvailability? _availability;
@@ -130,6 +136,7 @@ class _CommunityPageState extends State<CommunityPage> {
     _disposed = true;
     _loadTicket++;
     widget.auth?.removeListener(_authChanged);
+    _voteCooldown?.cancel();
     _sessionRevision.dispose();
     super.dispose();
   }
@@ -172,6 +179,10 @@ class _CommunityPageState extends State<CommunityPage> {
     _profile = null;
     _pending = [];
     _blocks = {};
+    _votes = {};
+    _voting.clear();
+    _voteCooldown?.cancel();
+    _voteCoolingDown = false;
     _revealed.clear();
     _busy = false;
     _error = null;
@@ -213,7 +224,9 @@ class _CommunityPageState extends State<CommunityPage> {
 
       final results = await Future.wait<Object?>([
         request(repository.availability),
-        request(() => repository.comments(contentKey: widget.contentKey)),
+        request(
+          () => repository.comments(contentKey: widget.contentKey, sort: _sort),
+        ),
         if (owner) request<CommunityProfile?>(repository.profile),
         if (owner)
           request(
@@ -221,6 +234,16 @@ class _CommunityPageState extends State<CommunityPage> {
           ),
         if (owner) request(repository.blockedUsers),
       ]);
+      if (!_currentSession(revision) || ticket != _loadTicket) return;
+      final loadedComments = results[1] as List<CommunityComment>?;
+      Map<String, int>? votes;
+      if (owner && loadedComments != null) {
+        votes = await request(
+          () => repository.votesForComments(
+            loadedComments.map((comment) => comment.id),
+          ),
+        );
+      }
       if (!_currentSession(revision) || ticket != _loadTicket) return;
       setState(() {
         _availability = results[0] as CommunityAvailability?;
@@ -233,6 +256,7 @@ class _CommunityPageState extends State<CommunityPage> {
             _pending = results[3] as List<CommunityComment>;
           }
           if (results[4] != null) _blocks = results[4] as Set<String>;
+          if (votes != null) _votes = votes;
         }
         if (errors.isNotEmpty) {
           final s = CommunityStrings.of(context);
@@ -255,9 +279,15 @@ class _CommunityPageState extends State<CommunityPage> {
     }
   }
 
-  Future<bool> _ensureIdentity({bool edit = false}) async {
+  Future<bool> _ensureIdentity({
+    bool edit = false,
+    bool requireCurrentTerms = true,
+  }) async {
     final revision = _sessionRevision.value;
-    if (!edit && _canParticipate && _profile != null) {
+    if (!edit &&
+        _canParticipate &&
+        _profile != null &&
+        (!requireCurrentTerms || _profile!.acceptedTerms)) {
       return true;
     }
     final changed = await Navigator.of(context).push<bool>(
@@ -273,7 +303,10 @@ class _CommunityPageState extends State<CommunityPage> {
     );
     if (!mounted) return false;
     if (changed == true || edit) await _load();
-    return _currentSession(revision) && _profile != null && _canParticipate;
+    return _currentSession(revision) &&
+        _profile != null &&
+        (!requireCurrentTerms || _profile!.acceptedTerms) &&
+        _canParticipate;
   }
 
   void _message(String value) {
@@ -352,7 +385,9 @@ class _CommunityPageState extends State<CommunityPage> {
 
   Future<void> _block(CommunityComment comment) async {
     final revision = _sessionRevision.value;
-    if (_busy || !await _ensureIdentity() || !mounted) return;
+    if (_busy || !await _ensureIdentity(requireCurrentTerms: false) || !mounted) {
+      return;
+    }
     final s = CommunityStrings.of(context);
     if (!await _confirm(s.blockConfirm, s.block) || !mounted) return;
     if (!_currentSession(revision) || !_canParticipate) return;
@@ -361,7 +396,9 @@ class _CommunityPageState extends State<CommunityPage> {
 
   Future<void> _report(CommunityComment comment) async {
     final revision = _sessionRevision.value;
-    if (_busy || !await _ensureIdentity() || !mounted) return;
+    if (_busy || !await _ensureIdentity(requireCurrentTerms: false) || !mounted) {
+      return;
+    }
     final s = CommunityStrings.of(context);
     final reason = await showModalBottomSheet<CommunityReportReason>(
       context: context,
@@ -415,11 +452,61 @@ class _CommunityPageState extends State<CommunityPage> {
     }
   }
 
+  Future<void> _vote(CommunityComment comment, int direction) async {
+    if (_voting.isNotEmpty ||
+        _voteCoolingDown ||
+        comment.authorUid == _viewerUid) {
+      return;
+    }
+    final revision = _sessionRevision.value;
+    setState(() => _voting.add(comment.id));
+    try {
+      if (!await _ensureIdentity() ||
+          !_currentSession(revision) ||
+          !_canParticipate ||
+          comment.authorUid == _viewerUid) {
+        return;
+      }
+      final value = _votes[comment.id] == direction ? 0 : direction;
+      await _repository!.setVote(commentId: comment.id, value: value);
+      if (!_currentSession(revision)) return;
+      _voteCooldown?.cancel();
+      _voteCoolingDown = true;
+      _voteCooldown = Timer(const Duration(seconds: 1), () {
+        if (_currentSession(revision)) setState(() => _voteCoolingDown = false);
+      });
+      // Confirmed by the transaction, never an optimistic vote/counter increment.
+      setState(() {
+        if (value == 0) {
+          _votes.remove(comment.id);
+        } else {
+          _votes[comment.id] = value;
+        }
+      });
+      await _load();
+    } catch (error) {
+      if (mounted && _currentSession(revision)) {
+        _message(CommunityStrings.of(context).voteFailure(error));
+      }
+    } finally {
+      if (_currentSession(revision)) setState(() => _voting.remove(comment.id));
+    }
+  }
+
   List<CommunityComment> get _visible {
     final visible = _comments
         .where((comment) => !_blocks.contains(comment.authorUid))
         .toList();
-    final roots = visible.where((comment) => comment.parentId == null).toList();
+    final roots = visible.where((comment) => comment.parentId == null).toList()
+      ..sort((a, b) {
+        if (_sort == CommunityCommentSort.best) {
+          final score = b.score.compareTo(a.score);
+          if (score != 0) return score;
+        }
+        return (b.createdAt ?? DateTime(0)).compareTo(
+          a.createdAt ?? DateTime(0),
+        );
+      });
     final rootIds = roots.map((comment) => comment.id).toSet();
     return [
       for (final root in roots) ...[
@@ -566,7 +653,34 @@ class _CommunityPageState extends State<CommunityPage> {
                   ),
                 ),
               const SizedBox(height: 28),
-              AppSectionHeading(s.recent),
+              DropdownButtonFormField<CommunityCommentSort>(
+                key: const ValueKey('community-sort'),
+                initialValue: _sort,
+                isExpanded: true,
+                decoration: InputDecoration(labelText: s.sortComments),
+                items: [
+                  DropdownMenuItem(
+                    value: CommunityCommentSort.best,
+                    child: Text(s.best),
+                  ),
+                  DropdownMenuItem(
+                    value: CommunityCommentSort.newest,
+                    child: Text(s.newest),
+                  ),
+                ],
+                onChanged: _loading || _busy
+                    ? null
+                    : (value) {
+                        if (value != null && value != _sort) {
+                          setState(() => _sort = value);
+                          _load();
+                        }
+                      },
+              ),
+              const SizedBox(height: 20),
+              AppSectionHeading(
+                _sort == CommunityCommentSort.best ? s.best : s.recent,
+              ),
               if (!_loading && visible.isEmpty && _error == null)
                 Card(
                   child: Padding(
@@ -615,6 +729,17 @@ class _CommunityPageState extends State<CommunityPage> {
               if (_pending.isNotEmpty) ...[
                 const SizedBox(height: 24),
                 AppSectionHeading(s.pendingTitle),
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Text(
+                    s.processingHelp,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
                 for (final comment in _pending)
                   Padding(
                     padding: const EdgeInsets.only(bottom: 12),
@@ -756,6 +881,31 @@ class _CommunityPageState extends State<CommunityPage> {
                   child: Text(s.hideSpoiler),
                 ),
             ],
+            if (approved) ...[
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 6,
+                crossAxisAlignment: WrapCrossAlignment.center,
+                children: [
+                  _voteButton(comment, 1, s),
+                  _voteButton(comment, -1, s),
+                  Text(
+                    '${s.score}: ${comment.score}',
+                    key: ValueKey('community-score-${comment.id}'),
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 12,
+                    ),
+                  ),
+                  if (_voting.contains(comment.id))
+                    const SizedBox.square(
+                      dimension: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                ],
+              ),
+            ],
             if (approved &&
                 comment.parentId == null &&
                 _availability?.canPost == true)
@@ -768,6 +918,49 @@ class _CommunityPageState extends State<CommunityPage> {
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _voteButton(
+    CommunityComment comment,
+    int direction,
+    CommunityStrings s,
+  ) {
+    final selected = _votes[comment.id] == direction;
+    final disabled =
+        comment.authorUid == _viewerUid ||
+        _voting.isNotEmpty ||
+        _voteCoolingDown ||
+        _busy ||
+        _loading;
+    final label = direction == 1 ? s.upVote : s.downVote;
+    return Tooltip(
+      message: comment.authorUid == _viewerUid ? s.noSelfVote : label,
+      child: Semantics(
+        button: true,
+        toggled: selected,
+        label: label,
+        child: TextButton.icon(
+          key: ValueKey(
+            'community-vote-${direction == 1 ? 'up' : 'down'}-${comment.id}',
+          ),
+          onPressed: disabled ? null : () => _vote(comment, direction),
+          style: TextButton.styleFrom(
+            backgroundColor: selected
+                ? AppColors.accent.withValues(alpha: 0.2)
+                : null,
+          ),
+          icon: Icon(
+            direction == 1
+                ? Icons.thumb_up_outlined
+                : Icons.thumb_down_outlined,
+            size: 18,
+          ),
+          label: Text(
+            '${direction == 1 ? comment.upVotes : comment.downVotes}',
+          ),
         ),
       ),
     );

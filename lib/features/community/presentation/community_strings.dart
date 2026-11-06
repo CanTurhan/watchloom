@@ -31,8 +31,8 @@ class CommunityStrings {
       text('Display my comments as', 'Yorumlarımda görünecek ad');
   String get preview => text('Public preview', 'Herkese açık önizleme');
   String get acceptTerms => text(
-    'I accept the community guidelines and understand my chosen name and approved comments are public.',
-    'Topluluk kurallarını kabul ediyorum; seçtiğim adın ve onaylanan yorumlarımın herkese açık olduğunu anlıyorum.',
+    'I accept the community rules and sending my submitted text and chosen public name to Cloudflare and OpenAI for automatic safety checks. Approved comments are public.',
+    'Topluluk kurallarını ve gönderdiğim metin ile seçtiğim görünen adın otomatik güvenlik kontrolü için Cloudflare ve OpenAI hizmetlerine iletilmesini kabul ediyorum. Onaylanan yorumlar herkese açıktır.',
   );
   String get guidelines => text('Community guidelines', 'Topluluk kuralları');
   String get save => text('Save public identity', 'Topluluk kimliğini kaydet');
@@ -53,20 +53,20 @@ class CommunityStrings {
   String get retry => text('Try again', 'Tekrar dene');
   String get pendingTitle => text('Your submissions', 'Senin gönderilerin');
   String get pending => text(
-    'Awaiting moderation · visible to you and moderators',
-    'Onay bekliyor · sen ve moderatörler görebilir',
+    'Automatic checks pending · not public yet',
+    'Otomatik kontrol bekliyor · henüz herkese açık değil',
   );
   String get rejected => text(
-    'Not published · visible to you and moderators',
-    'Yayımlanmadı · sen ve moderatörler görebilir',
+    'Not published after safety checks',
+    'Güvenlik kontrolü sonrasında yayımlanmadı',
   );
   String get sent => text(
-    'Submitted. Awaiting moderator approval.',
-    'Yorumun gönderildi, moderasyon onayı bekliyor.',
+    'Comment saved for automatic safety checks.',
+    'Yorumun otomatik güvenlik kontrolü için kaydedildi.',
   );
   String get moderation => text(
-    'Comments are reviewed before publication. Do not share personal details. Use report and block for abuse.',
-    'Yorumlar yayımlanmadan önce incelenir. Kişisel bilgilerini paylaşma. Kötüye kullanım için şikâyet ve engelleme seçeneklerini kullan.',
+    'Automatic safety checks run before publication. Do not share personal details. Use report and block for abuse.',
+    'Yorumlar yayımlanmadan önce otomatik güvenlik kontrolünden geçer. Kişisel bilgilerini paylaşma. Kötüye kullanım için şikâyet ve engelleme seçeneklerini kullan.',
   );
   String get empty =>
       text('Start a thoughtful discussion', 'İlk düşünceni paylaş');
@@ -113,7 +113,8 @@ class CommunityStrings {
     'What did you think of this series?',
     'Bu dizi hakkında ne düşünüyorsun?',
   );
-  String get submit => text('Send for approval', 'Onaya gönder');
+  String get submit =>
+      text('Send for safety checks', 'Güvenlik kontrolüne gönder');
   String get replyContext =>
       text('Reply to an earlier comment', 'Önceki bir yoruma yanıt');
   String get reportTitle =>
@@ -124,9 +125,35 @@ class CommunityStrings {
   String get recent =>
       text('Latest approved comments', 'Son onaylanan yorumlar');
   String get pageLimit => text(
-    'Showing the latest 50 approved comments. Refresh for new approvals.',
-    'Son 50 onaylı yorum gösteriliyor. Yeni onaylar için yenileyebilirsin.',
+    'Showing up to 50 approved comments in the selected order. Refresh for updates.',
+    'Seçtiğin sıralamada en fazla 50 onaylı yorum gösteriliyor. Güncellemeler için yenileyebilirsin.',
   );
+  String get best => text('Best comments', 'En iyi yorumlar');
+  String get newest => text('Newest first', 'En yeni önce');
+  String get sortComments => text('Comment order', 'Yorum sıralaması');
+  String get upVote => text('Upvote', 'Olumlu oy');
+  String get downVote => text('Downvote', 'Olumsuz oy');
+  String get noSelfVote => text(
+    'You cannot vote on your own comment.',
+    'Kendi yorumuna oy veremezsin.',
+  );
+  String get score => text('Score', 'Puan');
+  String get processingHelp => text(
+    'Saved comments are checked automatically. If the service is busy, checks retry later; you do not need to submit again.',
+    'Kaydedilen yorumlar otomatik kontrol edilir. Hizmet yoğunsa kontrol daha sonra yeniden denenir; tekrar göndermene gerek yok.',
+  );
+  String get renewConsent => text(
+    'Review and accept the updated community terms before submitting comments or voting. Your chosen public name stays under your control.',
+    'Yorum göndermeden veya oy vermeden önce güncel topluluk koşullarını inceleyip kabul et. Görünen adını seçme hakkın sende kalır.',
+  );
+  String voteFailure(Object error) =>
+      error is CommunityException &&
+          error.failure == CommunityFailure.permissionDenied
+      ? text(
+          'Your vote could not be recorded. Wait a moment, refresh, or review your community consent.',
+          'Oyun kaydedilemedi. Biraz bekle, yenile veya topluluk iznini kontrol et.',
+        )
+      : failure(error);
   String get blockedAccounts => text('Blocked accounts', 'Engellenen hesaplar');
   String get noBlocks =>
       text('You have not blocked anyone.', 'Henüz kimseyi engellemedin.');

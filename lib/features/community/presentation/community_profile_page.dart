@@ -358,6 +358,18 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
                     child: Text(s.manageAccount),
                   ),
                 ] else ...[
+                  if (_profile != null && !_profile!.acceptedTerms)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 18),
+                      child: Text(
+                        s.renewConsent,
+                        key: const ValueKey('community-renew-consent'),
+                        style: const TextStyle(
+                          color: AppColors.accentSoft,
+                          height: 1.5,
+                        ),
+                      ),
+                    ),
                   if (_error != null) ...[
                     Semantics(
                       liveRegion: true,

@@ -390,6 +390,43 @@ void main() {
     auth.dispose();
   });
 
+  testWidgets(
+    'private vote choices are cleared before a different user can vote',
+    (tester) async {
+      final auth = _LiveAuth(uid: 'owner', emailVerified: true);
+      final shared = CommunityComment(
+        id: 'shared-comment',
+        contentKey: 'tvmaze:show:1',
+        contentKind: CommunityContentKind.series,
+        authorUid: 'other',
+        authorName: '@other',
+        body: 'A public comment.',
+        status: CommunityCommentStatus.approved,
+        createdAt: DateTime(2026, 11, 6),
+        upVotes: 1,
+        score: 1,
+      );
+      final old = _BoundRepository('owner')
+        ..approved = [shared]
+        ..votes = {'shared-comment': 1};
+      final next = _BoundRepository('next')..approved = [shared];
+      await pumpPage(
+        tester,
+        feed(auth, old, repositories: {'owner': old, 'next': next}),
+      );
+      auth.publish(uid: 'next', emailVerified: true);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey('community-vote-up-shared-comment')),
+      );
+      await tester.pumpAndSettle();
+      expect(next.voteRequests, [('shared-comment', 1)]);
+      expect(old.voteRequests, isEmpty);
+      await tester.pumpWidget(const SizedBox());
+      auth.dispose();
+    },
+  );
+
   for (final pageKind in ['feed', 'identity']) {
     testWidgets(
       '$pageKind rejects an unchanged repository relabeled with a new snapshot UID',

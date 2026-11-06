@@ -1,4 +1,8 @@
+const communityPolicyVersion = '2026-11-06-auto-v1';
+
 enum CommunityContentKind { series, movie }
+
+enum CommunityCommentSort { best, newest }
 
 enum CommunityDisplayMode { handle, nickname }
 
@@ -30,9 +34,11 @@ class CommunityAvailability {
   const CommunityAvailability({
     required this.enabled,
     required this.moderationReady,
+    this.moderationEndpoint,
   });
   final bool enabled;
   final bool moderationReady;
+  final Uri? moderationEndpoint;
   bool get canPost => enabled && moderationReady;
 }
 
@@ -41,10 +47,13 @@ class CommunityProfile {
     required this.handle,
     this.nickname,
     required this.displayMode,
+    this.acceptedPolicyVersion = communityPolicyVersion,
   });
   final String handle;
   final String? nickname;
   final CommunityDisplayMode displayMode;
+  final String? acceptedPolicyVersion;
+  bool get acceptedTerms => acceptedPolicyVersion == communityPolicyVersion;
   String get publicName =>
       displayMode == CommunityDisplayMode.nickname && nickname != null
       ? nickname!
@@ -64,6 +73,9 @@ class CommunityComment {
     required this.createdAt,
     this.isSpoiler = false,
     this.moderationReason,
+    this.upVotes = 0,
+    this.downVotes = 0,
+    this.score = 0,
   });
   final String id;
   final String contentKey;
@@ -78,4 +90,28 @@ class CommunityComment {
 
   /// Only an enum-like moderator reason is stored, never a private report.
   final String? moderationReason;
+  final int upVotes;
+  final int downVotes;
+  final int score;
+
+  CommunityComment withVotes({
+    required int upVotes,
+    required int downVotes,
+    required int score,
+  }) => CommunityComment(
+    id: id,
+    contentKey: contentKey,
+    contentKind: contentKind,
+    authorUid: authorUid,
+    authorName: authorName,
+    body: body,
+    parentId: parentId,
+    status: status,
+    createdAt: createdAt,
+    isSpoiler: isSpoiler,
+    moderationReason: moderationReason,
+    upVotes: upVotes,
+    downVotes: downVotes,
+    score: score,
+  );
 }

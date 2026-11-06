@@ -244,8 +244,8 @@ void main() {
         expect(
           find.text(
             language == 'tr'
-                ? 'Onay bekliyor · sen ve moderatörler görebilir'
-                : 'Awaiting moderation · visible to you and moderators',
+                ? 'Otomatik kontrol bekliyor · henüz herkese açık değil'
+                : 'Automatic checks pending · not public yet',
           ),
           findsOneWidget,
         );
@@ -384,6 +384,11 @@ void main() {
     tester,
   ) async {
     final repository = FakeCommunityRepository()
+      ..profileValue = const CommunityProfile(
+        handle: 'existing',
+        displayMode: CommunityDisplayMode.handle,
+        acceptedPolicyVersion: '2026-11-05',
+      )
       ..availabilityValue = const CommunityAvailability(
         enabled: false,
         moderationReady: false,

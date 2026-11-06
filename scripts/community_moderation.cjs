@@ -147,6 +147,10 @@ async function run(args, clients) {
   }
   async function ready(token) {
     const config = (await get('communityConfig/current', token))?.data;
+    if (config?.moderationReady && config.rulesVersion === 2 && config.moderationMode === 'automatic') {
+      if (command === 'approve') throw new Error('Automatic moderation is enabled; the server publishes allowed submissions. Manual approval is disabled.');
+      return config;
+    }
     if (!config?.moderationReady || config.rulesVersion !== 1) {
       throw new Error('Initialize a real moderator first. Nothing published.');
     }
@@ -181,6 +185,7 @@ async function run(args, clients) {
     const mod = config?.primaryModeratorUid ? (await get(`communityModerators/${validUid(config.primaryModeratorUid)}`))?.data : null;
     console.log(JSON.stringify({project: PROJECT, configured: !!config, enabled: config?.enabled === true,
       moderationReady: config?.moderationReady === true, rulesVersion: config?.rulesVersion || null,
+      moderationMode: config?.moderationMode || 'manual',
       operatorType: config?.operatorType || (config?.primaryModeratorUid ? 'firebase-user' : null),
       ...(config?.operatorType === 'owner-cli'
         ? {ownerCliModeration: config.primaryModeratorUid === null}

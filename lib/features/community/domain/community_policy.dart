@@ -1,10 +1,28 @@
 import 'community_models.dart';
 
 /// A fast, conservative composition aid. This is NOT a trust boundary:
-/// Firestore always creates pending comments and only the operator can publish.
+/// Firestore creates pending comments; server moderation decides publication.
 abstract final class CommunityPolicy {
-  static const termsVersion = '2026-11-05';
+  static const termsVersion = communityPolicyVersion;
   static const maxBodyLength = 1200;
+  static Uri? moderationEndpoint(Object? value) {
+    if (value is! String) return null;
+    final uri = Uri.tryParse(value);
+    if (uri == null ||
+        uri.scheme != 'https' ||
+        uri.userInfo.isNotEmpty ||
+        uri.hasPort ||
+        uri.hasQuery ||
+        uri.hasFragment ||
+        (uri.path.isNotEmpty && uri.path != '/') ||
+        !RegExp(
+          r'^(?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+workers\.dev$',
+        ).hasMatch(uri.host)) {
+      return null;
+    }
+    return uri;
+  }
+
   static final _handle = RegExp(r'^[a-z][a-z0-9_]{2,19}$');
   static final _nickname = RegExp(
     r'^[\p{L}\p{M}\p{N} _-]{3,24}$',

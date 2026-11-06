@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../community/data/community_vote_transaction.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:watchloom/core/database/watchloom_database.dart';
 
@@ -88,6 +89,24 @@ class FirestoreAccountStore {
   /// this purge. Other authors' replies remain independent; no deleted author's
   /// text/name is retained in a parent tombstone or a report snapshot.
   Future<void> _eraseCommunityData() async {
+    // Withdraw each vote atomically with its aggregate and profile counter.
+    // A failed or interrupted purge remains retryable behind the deletion lock.
+    while (true) {
+      final votes = await user
+          .collection('communityVotes')
+          .limit(100)
+          .get(const GetOptions(source: Source.server));
+      if (votes.docs.isEmpty) break;
+      for (final vote in votes.docs) {
+        await CommunityVoteTransaction.apply(
+          firestore: firestore,
+          uid: uid,
+          commentId: vote.id,
+          value: 0,
+          erasing: true,
+        );
+      }
+    }
     await _deletePages(
       firestore
           .collection('communityComments')

@@ -38,7 +38,8 @@ python3 scripts/sync_web_licenses.py --check
 python3 scripts/sync_community_notices.py --check
 "$flutter_bin" analyze --no-pub lib test
 python3 -m unittest discover -s scripts -p 'test_*.py'
-node --test scripts/test_firebase_spark.cjs scripts/test_firebase_apple.cjs scripts/community_moderation_test.cjs
+node --test scripts/test_firebase_spark.cjs scripts/test_firebase_apple.cjs scripts/community_moderation_test.cjs \
+  scripts/community_automation_test.cjs server/community-worker/test/*.test.mjs
 
 if [[ "${WATCHLOOM_TEST_RUNNER:-}" == 'lightweight' ]]; then
   # Flutter's lightweight runner does not need a localhost debugging socket.

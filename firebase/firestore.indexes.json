@@ -3,6 +3,17 @@
     {"collectionGroup": "communityComments", "queryScope": "COLLECTION", "fields": [
       {"fieldPath": "contentKey", "order": "ASCENDING"},
       {"fieldPath": "status", "order": "ASCENDING"},
+      {"fieldPath": "score", "order": "DESCENDING"},
+      {"fieldPath": "createdAt", "order": "DESCENDING"}
+    ]},
+    {"collectionGroup": "communityComments", "queryScope": "COLLECTION", "fields": [
+      {"fieldPath": "status", "order": "ASCENDING"},
+      {"fieldPath": "policyVersion", "order": "ASCENDING"},
+      {"fieldPath": "moderationNextAt", "order": "ASCENDING"}
+    ]},
+    {"collectionGroup": "communityComments", "queryScope": "COLLECTION", "fields": [
+      {"fieldPath": "contentKey", "order": "ASCENDING"},
+      {"fieldPath": "status", "order": "ASCENDING"},
       {"fieldPath": "createdAt", "order": "DESCENDING"}
     ]},
     {"collectionGroup": "communityComments", "queryScope": "COLLECTION", "fields": [

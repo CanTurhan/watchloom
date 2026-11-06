@@ -13,6 +13,7 @@ abstract interface class CommunityRepository {
     required String contentKey,
     CommunityContentKind contentKind = CommunityContentKind.series,
     int limit = 50,
+    CommunityCommentSort sort = CommunityCommentSort.best,
   });
   Future<List<CommunityComment>> pendingComments({required String contentKey});
   Future<String> post({
@@ -30,4 +31,6 @@ abstract interface class CommunityRepository {
   Future<void> blockUser(String authorUid);
   Future<void> unblockUser(String authorUid);
   Future<Set<String>> blockedUsers();
+  Future<Map<String, int>> votesForComments(Iterable<String> ids);
+  Future<void> setVote({required String commentId, required int value});
 }

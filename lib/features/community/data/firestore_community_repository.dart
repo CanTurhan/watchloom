@@ -4,11 +4,17 @@ import '../domain/community_models.dart';
 import '../domain/community_policy.dart';
 import '../domain/community_repository.dart';
 import '../domain/community_submission.dart';
+import 'community_vote_transaction.dart';
 
 class FirestoreCommunityRepository implements CommunityRepository {
-  FirestoreCommunityRepository({required this.firestore, required this.uid});
+  FirestoreCommunityRepository({
+    required this.firestore,
+    required this.uid,
+    this.moderationRequest,
+  });
   final FirebaseFirestore firestore;
   final String? uid;
+  final CommunityModerationRequest? moderationRequest;
   Future<void>? _bootstrap;
   static const _server = GetOptions(source: Source.server);
   CollectionReference<Map<String, dynamic>> get _comments =>
@@ -55,10 +61,17 @@ class FirestoreCommunityRepository implements CommunityRepository {
                 .doc('current')
                 .get(_server))
             .data();
+    final endpoint = CommunityPolicy.moderationEndpoint(
+      data?['moderationEndpoint'],
+    );
     return CommunityAvailability(
       enabled: data?['enabled'] == true,
       moderationReady:
-          data?['moderationReady'] == true && data?['rulesVersion'] == 1,
+          data?['moderationReady'] == true &&
+          data?['rulesVersion'] == 2 &&
+          data?['moderationMode'] == 'automatic' &&
+          endpoint != null,
+      moderationEndpoint: endpoint,
     );
   });
 
@@ -132,6 +145,9 @@ class FirestoreCommunityRepository implements CommunityRepository {
           'postsInWindow': 0,
           'lastReportAt': Timestamp(0, 0),
           'lastReportId': null,
+          'voteCount': 0,
+          'lastVoteId': null,
+          'lastVoteAt': Timestamp(0, 0),
           'reportWindowAt': Timestamp(0, 0),
           'reportsInWindow': 0,
         });
@@ -149,11 +165,16 @@ class FirestoreCommunityRepository implements CommunityRepository {
     required String contentKey,
     CommunityContentKind contentKind = CommunityContentKind.series,
     int limit = 50,
+    CommunityCommentSort sort = CommunityCommentSort.best,
   }) => _guard(() async {
     CommunityPolicy.content(contentKey, contentKind);
-    final page = await _comments
+    Query<Map<String, dynamic>> query = _comments
         .where('contentKey', isEqualTo: contentKey)
-        .where('status', isEqualTo: 'approved')
+        .where('status', isEqualTo: 'approved');
+    if (sort == CommunityCommentSort.best) {
+      query = query.orderBy('score', descending: true);
+    }
+    final page = await query
         .orderBy('createdAt', descending: true)
         .limit(limit.clamp(1, 50))
         .get(_server);
@@ -186,7 +207,8 @@ class FirestoreCommunityRepository implements CommunityRepository {
   }) => _guard(() async {
     CommunityPolicy.content(contentKey, contentKind);
     final text = CommunityPolicy.body(body);
-    if (!(await availability()).canPost) {
+    final available = await availability();
+    if (!available.canPost) {
       throw const CommunityException(CommunityFailure.unavailable);
     }
     await _prepareOwner();
@@ -198,6 +220,9 @@ class FirestoreCommunityRepository implements CommunityRepository {
           throw const CommunityException(CommunityFailure.identityRequired);
         }
         final data = identity.data()!;
+        if (!_identity(data).acceptedTerms) {
+          throw const CommunityException(CommunityFailure.termsRequired);
+        }
         if (parentId != null) {
           if (!RegExp(r'^[A-Za-z0-9]{20}$').hasMatch(parentId)) {
             throw const CommunityException(CommunityFailure.invalidContent);
@@ -220,13 +245,23 @@ class FirestoreCommunityRepository implements CommunityRepository {
           'parentId': parentId,
           'isSpoiler': isSpoiler,
           'status': 'pending',
+          'policyVersion': CommunityPolicy.termsVersion,
+          'moderationNextAt': FieldValue.serverTimestamp(),
+          'scoreSchema': 1,
+          'upVotes': 0,
+          'downVotes': 0,
+          'score': 0,
           'createdAt': FieldValue.serverTimestamp(),
         });
         tx.update(profileRef, _counter(data, 'Post', ref.id, alternate));
       }),
       canRetry: _counterDenied,
     );
-    return ref.id;
+    return CommunitySubmission.requestModeration(
+      commentId: ref.id,
+      endpoint: available.moderationEndpoint,
+      request: moderationRequest,
+    );
   });
 
   @override
@@ -253,6 +288,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
           'reporterUid': owner,
           'reason': reason.name,
           'createdAt': FieldValue.serverTimestamp(),
+          'moderationNextAt': FieldValue.serverTimestamp(),
         });
         tx.set(
           firestore
@@ -324,6 +360,47 @@ class FirestoreCommunityRepository implements CommunityRepository {
     return result;
   });
 
+  @override
+  Future<Map<String, int>> votesForComments(Iterable<String> ids) => _guard(
+    () async {
+      final selected = ids.toSet().toList();
+      if (selected.length > 50 ||
+          selected.any((id) => !RegExp(r'^[A-Za-z0-9]{20}$').hasMatch(id))) {
+        throw const CommunityException(CommunityFailure.invalidContent);
+      }
+      if (selected.isEmpty) return {};
+      await _prepareOwner();
+      final result = <String, int>{};
+      for (var start = 0; start < selected.length; start += 30) {
+        final end = (start + 30).clamp(0, selected.length);
+        final page = await firestore
+            .collection('users')
+            .doc(_owner)
+            .collection('communityVotes')
+            .where(FieldPath.documentId, whereIn: selected.sublist(start, end))
+            .limit(30)
+            .get(_server);
+        for (final doc in page.docs) {
+          final value = doc.data()['value'];
+          if (value == 1 || value == -1) result[doc.id] = value as int;
+        }
+      }
+      return result;
+    },
+  );
+
+  @override
+  Future<void> setVote({required String commentId, required int value}) =>
+      _guard(() async {
+        await _prepareOwner();
+        await CommunityVoteTransaction.apply(
+          firestore: firestore,
+          uid: _owner,
+          commentId: commentId,
+          value: value,
+        );
+      });
+
   static CommunityProfile _identity(Map<String, dynamic> data) =>
       CommunityProfile(
         handle: data['handle'] as String,
@@ -331,6 +408,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
         displayMode: CommunityDisplayMode.values.byName(
           data['displayMode'] as String,
         ),
+        acceptedPolicyVersion: data['acceptedPolicyVersion'] as String?,
       );
 
   static CommunityComment _comment(
@@ -351,6 +429,9 @@ class FirestoreCommunityRepository implements CommunityRepository {
       createdAt: (data['createdAt'] as Timestamp?)?.toDate(),
       isSpoiler: data['isSpoiler'] == true,
       moderationReason: data['moderationReason'] as String?,
+      upVotes: data['upVotes'] as int? ?? 0,
+      downVotes: data['downVotes'] as int? ?? 0,
+      score: data['score'] as int? ?? 0,
     );
   }
 

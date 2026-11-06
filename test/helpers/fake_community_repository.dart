@@ -1,6 +1,7 @@
 import 'package:watchloom/features/community/domain/community_models.dart';
 import 'package:watchloom/features/community/domain/community_policy.dart';
 import 'package:watchloom/features/community/domain/community_repository.dart';
+import 'package:watchloom/features/community/domain/community_vote.dart';
 
 class FakeCommunityRepository implements CommunityRepository {
   CommunityAvailability availabilityValue = const CommunityAvailability(
@@ -19,6 +20,11 @@ class FakeCommunityRepository implements CommunityRepository {
   Object? postFailure;
   Object? privateReadFailure;
   int posted = 0;
+  Map<String, int> votes = {};
+  final List<(String, int)> voteRequests = [];
+  final List<CommunityCommentSort> sortRequests = [];
+  Future<void>? voteGate;
+  Object? voteFailure;
 
   @override
   Future<CommunityAvailability> availability() async => availabilityValue;
@@ -51,7 +57,21 @@ class FakeCommunityRepository implements CommunityRepository {
     required String contentKey,
     CommunityContentKind contentKind = CommunityContentKind.series,
     int limit = 50,
-  }) async => List.of(approved);
+    CommunityCommentSort sort = CommunityCommentSort.best,
+  }) async {
+    sortRequests.add(sort);
+    final result = List.of(approved)
+      ..sort((a, b) {
+        if (sort == CommunityCommentSort.best && a.score != b.score) {
+          return b.score.compareTo(a.score);
+        }
+        return (b.createdAt ?? DateTime(0)).compareTo(
+          a.createdAt ?? DateTime(0),
+        );
+      });
+    return result.take(limit).toList();
+  }
+
   @override
   Future<List<CommunityComment>> pendingComments({
     required String contentKey,
@@ -106,5 +126,36 @@ class FakeCommunityRepository implements CommunityRepository {
   Future<Set<String>> blockedUsers() async {
     if (privateReadFailure != null) throw privateReadFailure!;
     return Set.of(blocks);
+  }
+
+  @override
+  Future<Map<String, int>> votesForComments(Iterable<String> ids) async => {
+    for (final id in ids)
+      if (votes.containsKey(id)) id: votes[id]!,
+  };
+  @override
+  Future<void> setVote({required String commentId, required int value}) async {
+    voteRequests.add((commentId, value));
+    if (voteGate != null) await voteGate;
+    if (voteFailure != null) throw voteFailure!;
+    final index = approved.indexWhere((comment) => comment.id == commentId);
+    if (index < 0) {
+      throw const CommunityException(CommunityFailure.invalidContent);
+    }
+    final comment = approved[index];
+    final totals = CommunityVoteTotals(
+      upVotes: comment.upVotes,
+      downVotes: comment.downVotes,
+    ).change(previous: votes[commentId] ?? 0, next: value);
+    approved[index] = comment.withVotes(
+      upVotes: totals.upVotes,
+      downVotes: totals.downVotes,
+      score: totals.score,
+    );
+    if (value == 0) {
+      votes.remove(commentId);
+    } else {
+      votes[commentId] = value;
+    }
   }
 }

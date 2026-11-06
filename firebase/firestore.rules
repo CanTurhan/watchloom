@@ -31,11 +31,11 @@ service cloud.firestore {
         && get(/databases/$(database)/documents/users/$(uid)/backups/$(backupId)).data.createdAt
           < request.time - duration.value(1, 'd');
     }
-    // Community publishing is fail-closed and separately enabled by an owner
-    // operator. Clients can never approve, trust, or moderate their own posts.
+    // Only the authenticated server may publish after automatic moderation.
     function communityReady() {
       let config = get(/databases/$(database)/documents/communityConfig/current).data;
-      return config.enabled == true && config.moderationReady == true && config.rulesVersion == 1;
+      return config.enabled == true && config.moderationReady == true && config.rulesVersion == 2
+        && config.moderationMode == 'automatic';
     }
     function boundedList(maximum) {
       return request.query.limit is int && request.query.limit > 0
@@ -53,7 +53,7 @@ service cloud.firestore {
           && data.nickname.matches('^[\\p{L}\\p{M}\\p{N} _-]{3,24}$')))
         && data.displayMode in ['handle', 'nickname']
         && (data.displayMode != 'nickname' || data.nickname != null)
-        && data.acceptedPolicyVersion == '2026-11-05';
+        && data.acceptedPolicyVersion in ['2026-11-05', '2026-11-06-auto-v1'];
     }
     function submissionCounter(before, after, kind, id, maximum, seconds) {
       let lastAt = 'last' + kind + 'At';
@@ -72,7 +72,7 @@ service cloud.firestore {
     function safeBody(body) {
       // Unicode letters/marks/numbers/punctuation/symbols include emoji and
       // international text, but exclude invisible format/bidi/control points.
-      // Approval remains mandatory: a word list cannot recognize all abuse.
+      // Server moderation is mandatory: this word list is only an early guard.
       return body is string && body.size() >= 1 && body.size() <= 1200
         && body.matches('^[\\p{L}\\p{M}\\p{N}\\p{P}\\p{S} \\n]+$')
         && !body.lower().matches('[\\s\\S]*(https?:|www\\.|@)[\\s\\S]*')
@@ -85,6 +85,56 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/deletionMarkers/$(parent.authorUid))
         && !exists(/databases/$(database)/documents/communityBlocks/$(uid)/authors/$(parent.authorUid))
         && !exists(/databases/$(database)/documents/communityBlocks/$(parent.authorUid)/authors/$(uid));
+    }
+    function voteValue(uid, commentId, after) {
+      let path = /databases/$(database)/documents/users/$(uid)/communityVotes/$(commentId);
+      return after ? (existsAfter(path) ? getAfter(path).data.value : 0)
+        : (exists(path) ? get(path).data.value : 0);
+    }
+    function plus(value) { return value == 1 ? 1 : 0; }
+    function minus(value) { return value == -1 ? 1 : 0; }
+    function present(value) { return value == 0 ? 0 : 1; }
+    function voteProfile(uid, commentId) {
+      let before = get(/databases/$(database)/documents/communityProfiles/$(uid)).data;
+      let after = getAfter(/databases/$(database)/documents/communityProfiles/$(uid)).data;
+      let old = voteValue(uid, commentId, false);
+      let next = voteValue(uid, commentId, true);
+      let deleting = exists(/databases/$(database)/documents/deletionMarkers/$(uid));
+      let root = get(/databases/$(database)/documents/users/$(uid)).data;
+      return old in [-1, 0, 1] && next in [-1, 0, 1] && old != next
+        && after.diff(before).affectedKeys().hasOnly(['voteCount', 'lastVoteId', 'lastVoteAt'])
+        && after.lastVoteId == commentId && after.lastVoteAt == request.time
+        && after.voteCount is int && after.voteCount >= 0 && after.voteCount <= 1000000000
+        && after.voteCount == before.get('voteCount', 0) + present(next) - present(old)
+        && verified(uid)
+        && ((next == 0 && deleting && root.status == 'deleting' && recent(uid))
+        || (!deleting && root.status == 'active'
+          && (next == 0 || before.acceptedPolicyVersion == '2026-11-06-auto-v1')
+          && request.time >= before.get('lastVoteAt', timestamp.value(0)) + duration.value(1, 's')));
+    }
+    function scoreDelta(before, after, old, next) {
+      return before.get('upVotes', 0) is int && before.get('downVotes', 0) is int
+        && after.scoreSchema == 1 && after.upVotes is int && after.downVotes is int && after.score is int
+        && after.upVotes >= 0 && after.downVotes >= 0
+        && after.upVotes <= 1000000000 && after.downVotes <= 1000000000
+        && after.upVotes == before.get('upVotes', 0) + plus(next) - plus(old)
+        && after.downVotes == before.get('downVotes', 0) + minus(next) - minus(old)
+        && after.score == after.upVotes - after.downVotes
+        && after.diff(before).affectedKeys().hasOnly(['scoreSchema', 'upVotes', 'downVotes', 'score']);
+    }
+    function scoreWrite(uid, commentId, before, after) {
+      let old = voteValue(uid, commentId, false);
+      let next = voteValue(uid, commentId, true);
+      return voteProfile(uid, commentId) && scoreDelta(before, after, old, next)
+        && (next == 0 || (before.status == 'approved' && before.authorUid != uid
+          && !exists(/databases/$(database)/documents/communityBlocks/$(uid)/authors/$(before.authorUid))
+          && !exists(/databases/$(database)/documents/communityBlocks/$(before.authorUid)/authors/$(uid))));
+    }
+    function voteTarget(uid, commentId) {
+      let path = /databases/$(database)/documents/communityComments/$(commentId);
+      let next = voteValue(uid, commentId, true);
+      return next == 0 && !exists(path) || scoreDelta(get(path).data, getAfter(path).data,
+        voteValue(uid, commentId, false), next);
     }
     match /communityConfig/{id} {
       allow get: if id == 'current';
@@ -113,44 +163,62 @@ service cloud.firestore {
       allow get: if (owns(uid) && (active(uid) || erasing(uid))) || moderator();
       allow list: if false;
       allow create: if active(uid) && identityValid(request.resource.data)
+        && request.resource.data.acceptedPolicyVersion == '2026-11-06-auto-v1'
         && request.resource.data.keys().hasOnly(['schema', 'handle', 'nickname', 'displayMode',
           'createdAt', 'updatedAt', 'lastPostAt', 'lastPostId', 'postWindowAt', 'postsInWindow',
-          'lastReportAt', 'lastReportId', 'reportWindowAt', 'reportsInWindow', 'acceptedPolicyVersion', 'acceptedPolicyAt'])
+          'lastReportAt', 'lastReportId', 'reportWindowAt', 'reportsInWindow', 'acceptedPolicyVersion', 'acceptedPolicyAt',
+          'voteCount', 'lastVoteId', 'lastVoteAt'])
         && request.resource.data.createdAt == request.time && request.resource.data.updatedAt == request.time
         && request.resource.data.acceptedPolicyAt == request.time
         && request.resource.data.lastPostAt == timestamp.value(0) && request.resource.data.lastPostId == null
         && request.resource.data.postWindowAt == timestamp.value(0) && request.resource.data.postsInWindow == 0
         && request.resource.data.lastReportAt == timestamp.value(0) && request.resource.data.lastReportId == null
         && request.resource.data.reportWindowAt == timestamp.value(0) && request.resource.data.reportsInWindow == 0
+        && request.resource.data.voteCount == 0 && request.resource.data.lastVoteId == null
+        && request.resource.data.lastVoteAt == timestamp.value(0)
         && getAfter(/databases/$(database)/documents/communityHandles/$(request.resource.data.handle)).data.uid == uid;
       allow update: if active(uid) && identityValid(request.resource.data) && (
         (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['nickname', 'displayMode', 'updatedAt', 'acceptedPolicyVersion', 'acceptedPolicyAt'])
+          && request.resource.data.acceptedPolicyVersion == '2026-11-06-auto-v1'
           && request.resource.data.updatedAt == request.time && request.resource.data.acceptedPolicyAt == request.time)
-        || (communityReady() && submissionCounter(resource.data, request.resource.data, 'Post', request.resource.data.lastPostId, 20, 30)
+        || (submissionCounter(resource.data, request.resource.data, 'Post', request.resource.data.lastPostId, 20, 30) && communityReady()
           && !exists(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId))
           && getAfter(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId)).data.authorUid == uid)
         || (submissionCounter(resource.data, request.resource.data, 'Report', request.resource.data.lastReportId, 5, 60)
           && !exists(/databases/$(database)/documents/communityReports/$(request.resource.data.lastReportId))
           && getAfter(/databases/$(database)/documents/communityReports/$(request.resource.data.lastReportId)).data.reporterUid == uid)
-      );
+      ) || (request.auth != null && request.resource.data.lastVoteId is string
+        && request.resource.data.lastVoteId.matches('^[A-Za-z0-9]{20}$')
+        && voteProfile(uid, request.resource.data.lastVoteId)
+        && voteTarget(uid, request.resource.data.lastVoteId));
       allow delete: if erasing(uid)
+        && resource.data.get('voteCount', 0) == 0
         && !existsAfter(/databases/$(database)/documents/communityHandles/$(resource.data.handle));
     }
     match /communityComments/{commentId} {
-      allow get: if resource.data.status == 'approved' || moderator()
+      allow get: if (request.auth != null
+        && !exists(/databases/$(database)/documents/communityComments/$(commentId))
+        && (active(request.auth.uid) || erasing(request.auth.uid))
+        && exists(/databases/$(database)/documents/users/$(request.auth.uid)/communityVotes/$(commentId)))
+        || resource.data.status == 'approved' || moderator()
         || (owns(resource.data.authorUid) && (active(resource.data.authorUid) || erasing(resource.data.authorUid)));
       allow list: if boundedList(50) && (resource.data.status == 'approved'
         || moderator() || (owns(resource.data.authorUid) && (active(resource.data.authorUid) || erasing(resource.data.authorUid))));
       allow create: if request.auth != null && active(request.auth.uid) && communityReady()
         && commentId.matches('^[A-Za-z0-9]{20}$')
         && request.resource.data.keys().hasOnly(['schema', 'contentKey', 'contentKind', 'authorUid',
-          'authorName', 'body', 'parentId', 'isSpoiler', 'status', 'createdAt'])
+          'authorName', 'body', 'parentId', 'isSpoiler', 'status', 'createdAt', 'policyVersion',
+          'moderationNextAt', 'scoreSchema', 'upVotes', 'downVotes', 'score'])
         && request.resource.data.schema == 1 && request.resource.data.authorUid == request.auth.uid
         && request.resource.data.contentKind == 'series'
         && request.resource.data.contentKey.matches('^tvmaze:show:[1-9][0-9]{0,9}$')
         && request.resource.data.status == 'pending' && request.resource.data.createdAt == request.time
+        && request.resource.data.policyVersion == '2026-11-06-auto-v1'
+        && request.resource.data.moderationNextAt == request.time
+        && request.resource.data.scoreSchema == 1 && request.resource.data.upVotes == 0
+        && request.resource.data.downVotes == 0 && request.resource.data.score == 0
         && request.resource.data.isSpoiler is bool && safeBody(request.resource.data.body)
-        && get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.acceptedPolicyVersion == '2026-11-05'
+        && get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.acceptedPolicyVersion == '2026-11-06-auto-v1'
         && request.resource.data.authorName == (
           get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.displayMode == 'nickname'
           ? get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.nickname
@@ -160,7 +228,8 @@ service cloud.firestore {
         && (request.resource.data.parentId == null || (request.resource.data.parentId is string
           && request.resource.data.parentId.matches('^[A-Za-z0-9]{20}$')
           && validReply(request.resource.data.parentId, request.resource.data.contentKey, request.auth.uid)));
-      allow update: if false;
+      allow update: if request.auth != null
+        && scoreWrite(request.auth.uid, commentId, resource.data, request.resource.data);
       allow delete: if owns(resource.data.authorUid)
         && (active(resource.data.authorUid) || erasing(resource.data.authorUid));
     }
@@ -169,12 +238,13 @@ service cloud.firestore {
       allow list: if moderator() && boundedList(50);
       allow create: if request.auth != null && active(request.auth.uid)
         && reportId.matches('^[A-Za-z0-9]{20}$')
-        && request.resource.data.keys().hasOnly(['commentId', 'reporterUid', 'reason', 'createdAt'])
+        && request.resource.data.keys().hasOnly(['commentId', 'reporterUid', 'reason', 'createdAt', 'moderationNextAt'])
         && request.resource.data.reporterUid == request.auth.uid
         && request.resource.data.commentId.matches('^[A-Za-z0-9]{20}$')
         && request.resource.data.reason in ['abuse', 'hate', 'sexual', 'spam', 'spoiler', 'other']
         && request.resource.data.createdAt == request.time
-        && get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.acceptedPolicyVersion == '2026-11-05'
+        && request.resource.data.get('moderationNextAt', request.time) == request.time
+        && get(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.acceptedPolicyVersion in ['2026-11-05', '2026-11-06-auto-v1']
         && get(/databases/$(database)/documents/communityComments/$(request.resource.data.commentId)).data.status == 'approved'
         && get(/databases/$(database)/documents/communityComments/$(request.resource.data.commentId)).data.authorUid != request.auth.uid
         && getAfter(/databases/$(database)/documents/communityProfiles/$(request.auth.uid)).data.lastReportId == reportId
@@ -232,6 +302,16 @@ service cloud.firestore {
         // Auth/root while a community identity (and its public content) exists.
         && !existsAfter(/databases/$(database)/documents/communityProfiles/$(uid))
         && getAfter(/databases/$(database)/documents/deletionMarkers/$(uid)).data.purgedAt == request.time;
+      match /communityVotes/{commentId} {
+        allow get: if owns(uid) && (active(uid) || erasing(uid));
+        allow list: if owns(uid) && (active(uid) || erasing(uid)) && boundedList(100);
+        allow create, update: if owns(uid) && commentId.matches('^[A-Za-z0-9]{20}$')
+          && request.resource.data.keys().hasOnly(['commentId', 'value', 'updatedAt'])
+          && request.resource.data.commentId == commentId && request.resource.data.value in [-1, 1]
+          && request.resource.data.updatedAt == request.time
+          && voteProfile(uid, commentId) && voteTarget(uid, commentId);
+        allow delete: if owns(uid) && voteProfile(uid, commentId) && voteTarget(uid, commentId);
+      }
       match /communityReportRefs/{reportId} {
         allow read: if owns(uid) && (active(uid) || erasing(uid));
         allow create: if active(uid)
