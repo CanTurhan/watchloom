@@ -11,3 +11,5 @@ Tests cover exact movie identity, old saved movies without URLs, missing/invalid
 Source branch: `version_1.2.0_11`. Current release metadata: `1.2.2+13`. Build artifacts are generated at `build/ios/archive/Runner.xcarchive` and `build/ios/ipa/Watchloom.ipa` and verified with `python3 scripts/verify_ios_artifacts.py`.
 
 TestFlight upload and App Store publication must be reported separately from successful local build creation. The existing live moderation TLS gate was not removed or weakened.
+
+Verification: all 186 Flutter tests passed; analyzer, runtime/native licenses, hosted notices and installed Firebase iOS security checks passed. Xcode created the 1.2.2 (13) archive and archive metadata verification passed. The first IPA export failed because the Xcode account could not log in and an iOS Distribution certificate was unavailable; the keychain check found only an Apple Development identity. A distribution export retry uses `-allowProvisioningUpdates`. Do not treat a successful Flutter archive exit as proof that an IPA exists or was uploaded. The live moderation gate also still returned `EPROTO`.
