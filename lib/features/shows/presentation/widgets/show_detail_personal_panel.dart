@@ -220,6 +220,15 @@ class _ShowDetailMetadataCardState extends State<_ShowDetailMetadataCard> {
   }
 
   Future<_ShowMetadata> _loadMetadata() {
+    if (widget.show.isMovie) {
+      return Future.value(
+        _ShowMetadata(
+          platform: widget.show.channelName,
+          releaseDate: widget.show.premiered,
+          castNames: const [],
+        ),
+      );
+    }
     return _cache.putIfAbsent(widget.show.id, () async {
       try {
         final response = await _dio.get<Map<String, dynamic>>(

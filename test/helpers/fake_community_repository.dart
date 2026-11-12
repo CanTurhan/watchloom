@@ -87,6 +87,7 @@ class FakeCommunityRepository implements CommunityRepository {
     required String body,
     String? parentId,
     bool isSpoiler = false,
+    CommunityWatchContext? watchContext,
   }) async {
     if (postFailure != null) throw postFailure!;
     final id = 'submitted${++posted}';
@@ -102,9 +103,48 @@ class FakeCommunityRepository implements CommunityRepository {
         status: CommunityCommentStatus.pending,
         createdAt: DateTime(2026, 11, 6),
         isSpoiler: isSpoiler,
+        watchContext: watchContext,
       ),
     );
     return id;
+  }
+
+  @override
+  Future<void> editComment({
+    required CommunityComment comment,
+    required String body,
+    required bool isSpoiler,
+  }) async {
+    if (postFailure != null) throw postFailure!;
+    final current = [
+      ...approved,
+      ...pending,
+    ].where((c) => c.id == comment.id).first;
+    if (current.editRevision != comment.editRevision) {
+      throw const CommunityException(CommunityFailure.conflict);
+    }
+    approved.removeWhere((c) => c.id == comment.id);
+    pending.removeWhere((c) => c.id == comment.id);
+    pending.add(
+      CommunityComment(
+        id: current.id,
+        contentKey: current.contentKey,
+        contentKind: current.contentKind,
+        authorUid: current.authorUid,
+        authorName: current.authorName,
+        body: CommunityPolicy.body(body),
+        parentId: current.parentId,
+        status: CommunityCommentStatus.pending,
+        createdAt: current.createdAt,
+        isSpoiler: isSpoiler,
+        watchContext: current.watchContext,
+        editRevision: current.editRevision + 1,
+        editedAt: DateTime.now(),
+        upVotes: current.upVotes,
+        downVotes: current.downVotes,
+        score: current.score,
+      ),
+    );
   }
 
   @override

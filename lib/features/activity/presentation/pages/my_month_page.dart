@@ -3,6 +3,7 @@ import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/core/localization/app_activity_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/localization/app_story_strings.dart';
+import 'package:watchloom/core/localization/app_recap_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/core/widgets/app_page_header.dart';
 import 'package:watchloom/features/activity/domain/entities/episode_watch_log.dart';
@@ -21,13 +22,8 @@ class _MyMonthPageState extends State<MyMonthPage> {
   int _period = 1;
   DateTime _date = DateTime.now();
 
-  void _move(int delta) => setState(() {
-    _date = switch (_period) {
-      0 => DateTime(_date.year, _date.month, _date.day + delta),
-      2 => DateTime(_date.year + delta, 1),
-      _ => DateTime(_date.year, _date.month + delta),
-    };
-  });
+  void _move(int delta) =>
+      setState(() => _date = moveRecapPeriod(_date, _period, delta));
 
   @override
   Widget build(BuildContext context) {
@@ -131,9 +127,23 @@ class _MyMonthPageState extends State<MyMonthPage> {
                       onPressed: () => _move(-1),
                       icon: const Icon(Icons.chevron_left),
                     ),
-                    TextButton(
-                      onPressed: () => setState(() => _date = DateTime.now()),
-                      child: Text(strings.value(en: 'Today', tr: 'Bugün')),
+                    Expanded(
+                      child: Tooltip(
+                        message: strings.recapResetLabel(_period),
+                        child: TextButton(
+                          key: const ValueKey('recap-period-label'),
+                          onPressed: () =>
+                              setState(() => _date = DateTime.now()),
+                          child: Text(
+                            strings.recapPeriodLabel(
+                              _date,
+                              _period,
+                              DateTime.now(),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ),
+                      ),
                     ),
                     IconButton(
                       tooltip: strings.value(
@@ -145,7 +155,14 @@ class _MyMonthPageState extends State<MyMonthPage> {
                     ),
                   ],
                 ),
-                MonthlyActivitySummaryCard(summary: summary),
+                GestureDetector(
+                  key: const ValueKey('recap-swipe-period'),
+                  onHorizontalDragEnd: (details) {
+                    final velocity = details.primaryVelocity ?? 0;
+                    if (velocity.abs() > 150) _move(velocity < 0 ? 1 : -1);
+                  },
+                  child: MonthlyActivitySummaryCard(summary: summary),
+                ),
                 const SizedBox(height: 14),
                 Row(
                   children: [

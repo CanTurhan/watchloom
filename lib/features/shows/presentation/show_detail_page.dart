@@ -164,11 +164,13 @@ class _ShowDetailPageState extends State<ShowDetailPage> {
                     url: _show.trailerUrl!,
                     rating: _show.contentRating,
                   ),
-                if (!_show.isMovie) ...[
+                ...[
                   Card(
                     child: ListTile(
                       leading: const Icon(Icons.forum_outlined),
-                      title: Text(CommunityStrings.of(context).title),
+                      title: Text(
+                        CommunityStrings.of(context).titleFor(_show.isMovie),
+                      ),
                       subtitle: Text(CommunityStrings.of(context).subtitle),
                       trailing: const Icon(Icons.chevron_right_rounded),
                       onTap: () => CommunityPage.open(
@@ -183,7 +185,9 @@ class _ShowDetailPageState extends State<ShowDetailPage> {
                 _SectionTitle(strings.summaryTitle),
                 const SizedBox(height: 10),
                 Text(
-                  _show.summary.isEmpty ? strings.noSummary : _show.summary,
+                  _show.summary.trim().isEmpty
+                      ? strings.noSummaryFor(_show.isMovie)
+                      : _show.summary,
                   style: const TextStyle(
                     color: Color(0xFFD2D3DA),
                     fontSize: 14,
@@ -274,11 +278,13 @@ class _ShowDetailPageState extends State<ShowDetailPage> {
       case ShowFailureType.rateLimited:
         return strings.rateLimitError;
       case ShowFailureType.notFound:
-        return strings.notFoundError;
+        return strings.notFoundFor(_show.isMovie);
       case ShowFailureType.invalidResponse:
-        return strings.invalidResponseError;
+        return strings.dataErrorFor(_show.isMovie);
       case ShowFailureType.unknown:
-        return strings.unknownError;
+        return _show.isMovie
+            ? strings.dataErrorFor(true)
+            : strings.unknownError;
     }
   }
 

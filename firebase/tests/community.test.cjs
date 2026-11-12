@@ -29,6 +29,7 @@ test('Spark automatic series community and vote security rules', {timeout: 18000
     if (v instanceof Date) return {timestampValue: v.toISOString()};
     if (typeof v === 'boolean') return {booleanValue: v};
     if (Number.isInteger(v)) return {integerValue: `${v}`};
+    if (typeof v === 'object') return {mapValue: {fields: Object.fromEntries(Object.entries(v).map(([key, item]) => [key, value(item)]))}};
     return {stringValue: v};
   }
   function update(path, data, {patch = false, timestamps = []} = {}) {
@@ -202,6 +203,40 @@ test('Spark automatic series community and vote security rules', {timeout: 18000
       assert.equal((await commit(await reportWrites(a, id(), replyId), a.token)).status, 403);
       assert.equal((await read(`users/${a.uid}/communityReportRefs/${reportId}`, b.token)).status, 403);
       await db.doc('communityConfig/current').update({enabled: true});
+    });
+    await t.test('movie viewing snapshots and owner edits preserve identity, votes and moderation boundaries', async () => {
+      const author = await user();
+      const handle = `fan_${author.uid.slice(0, 8).toLowerCase()}`;
+      assert.equal((await commit(profileWrites(author, handle), author.token)).status, 200);
+      const target = id(), path = `communityComments/${target}`;
+      const context = {status: 'watched', season: null, episode: null};
+      assert.equal((await post(author, target, {contentKind: 'movie', contentKey: 'imdb:movie:tt1375666', watchContext: context, editRevision: 0})).status, 200);
+      await db.doc(path).update({status: 'approved', upVotes: 2, downVotes: 1, score: 1});
+      const originalDate = (await db.doc(path).get()).data().createdAt;
+      const edited = async (identity, extra = {}) => [
+        update(path, {body: 'Yeni bakış açım 🎬', isSpoiler: false, status: 'pending', editRevision: 1, ...extra},
+          {patch: true, timestamps: ['editedAt', 'moderationNextAt']}),
+        await counterWrite(identity, 'Post', target),
+      ];
+      await resetPost(author);
+      assert.equal((await commit(await edited(b), b.token)).status, 403);
+      assert.equal((await commit(await edited(author, {score: 999}), author.token)).status, 403);
+      assert.equal((await commit(await edited(author, {watchContext: {status: 'not_started', season: null, episode: null}}), author.token)).status, 403);
+      assert.equal((await commit(await edited(author, {contentKey: 'tvmaze:show:1'}), author.token)).status, 403);
+      assert.equal((await commit(await edited(author), author.token)).status, 200);
+      const saved = (await db.doc(path).get()).data();
+      assert.equal(saved.status, 'pending');
+      assert.equal(saved.editRevision, 1);
+      assert.equal(saved.score, 1);
+      assert.equal(saved.upVotes, 2);
+      assert.equal(saved.createdAt.toMillis(), originalDate.toMillis());
+      assert.deepEqual(saved.watchContext, context);
+      assert.equal((await read(path)).status, 403);
+      assert.equal((await read(path, author.token)).status, 200);
+      await resetPost(author);
+      assert.equal((await commit(await edited(author, {body: 'Stale revision'}), author.token)).status, 403);
+      assert.equal((await post(author, id(), {contentKind: 'movie', contentKey: 'imdb:movie:tt1375666', watchContext: {status: 'watching', season: 8, episode: 5}})).status, 403);
+      assert.equal((await post(author, id(), {watchContext: {status: 'watching', season: 8, episode: 5}})).status, 200);
     });
     await t.test('votes require exact atomic counters and a private single vote; self-votes and status forgery fail', async () => {
       assert.equal((await commit(await voteWrites(a, rootId, 1), a.token)).status, 403);

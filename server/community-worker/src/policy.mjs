@@ -26,10 +26,19 @@ export function fold(value) {
 }
 const taboo = /(^|[^a-z])(fuck(?:ing|er|ers)?|shit(?:ty)?|bitch(?:es)?|nigger|nigga|cunt|orospu(?:cocugu)?|siktir(?:git)?|sikik|sikeyim|siktim|sikerim|amk|aq|yarrak|ibne)([^a-z]|$)/;
 export function localReason(data) {
-  if (!data || data.schema !== 1 || data.policyVersion !== POLICY || data.contentKind !== 'series'
-    || !/^tvmaze:show:[1-9][0-9]{0,9}$/.test(data.contentKey || '') || !uidValid(data.authorUid)
+  const contentValid = data?.contentKind === 'series' ? /^tvmaze:show:[1-9][0-9]{0,9}$/.test(data.contentKey || '')
+    : data?.contentKind === 'movie' && /^imdb:movie:tt[0-9]{7,10}$/.test(data.contentKey || '');
+  if (!data || data.schema !== 1 || data.policyVersion !== POLICY || !contentValid || !uidValid(data.authorUid)
     || typeof data.isSpoiler !== 'boolean' || !(data.createdAt instanceof Date)
     || (data.parentId !== null && !commentId(data.parentId))) return 'invalidContent';
+  const viewing = data.watchContext;
+  if (viewing != null && (!['not_started', 'watching', 'watched'].includes(viewing.status)
+    || Object.keys(viewing).some(key => !['status', 'season', 'episode'].includes(key))
+    || (data.contentKind === 'movie' && (viewing.status === 'watching' || viewing.season !== null || viewing.episode !== null))
+    || ((viewing.season !== null || viewing.episode !== null) && (viewing.status === 'not_started'
+      || !Number.isInteger(viewing.season) || viewing.season < 0 || viewing.season > 10000
+      || !Number.isInteger(viewing.episode) || viewing.episode < 1 || viewing.episode > 100000)))) return 'invalidContent';
+  if (data.editRevision != null && (!Number.isSafeInteger(data.editRevision) || data.editRevision < 0)) return 'invalidContent';
   if (typeof data.authorName !== 'string' || !(/^@[a-z][a-z0-9_]{2,19}$/.test(data.authorName)
     || /^[\p{L}\p{M}\p{N} _-]{3,24}$/u.test(data.authorName))) return 'invalidIdentity';
   if (typeof data.body !== 'string' || data.body.trim().length < 1 || data.body.length > 1200

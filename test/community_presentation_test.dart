@@ -59,6 +59,81 @@ void main() {
 
   for (final language in ['en', 'tr']) {
     testWidgets(
+      'own comment edit is prefilled and preserves original viewing snapshot and votes ($language)',
+      (tester) async {
+        final repository = FakeCommunityRepository();
+        const comment = CommunityComment(
+          id: '12345678901234567890',
+          contentKey: 'tvmaze:show:123',
+          contentKind: CommunityContentKind.series,
+          authorUid: 'owner',
+          authorName: '@viewer',
+          body: 'Original thought',
+          status: CommunityCommentStatus.approved,
+          createdAt: null,
+          upVotes: 4,
+          downVotes: 1,
+          score: 3,
+          watchContext: CommunityWatchContext(
+            status: 'watching',
+            season: 8,
+            episode: 5,
+          ),
+        );
+        repository.approved = [comment];
+        await harness(
+          tester,
+          CommunityPage(
+            contentKey: comment.contentKey,
+            seriesName: 'Friends',
+            repository: repository,
+            viewerUid: 'owner',
+            verified: true,
+          ),
+          language: language,
+          scale: 1,
+        );
+        await scrollTo(
+          tester,
+          find.byKey(ValueKey('community-comment-${comment.id}')),
+        );
+        expect(
+          find.text(
+            language == 'tr' ? '8. sezon · 5. bölüm' : 'Season 8 · Episode 5',
+          ),
+          findsOneWidget,
+        );
+        final menu = find.descendant(
+          of: find.byKey(ValueKey('community-comment-${comment.id}')),
+          matching: find.byType(PopupMenuButton<String>),
+        );
+        await tester.ensureVisible(menu);
+        await tester.tap(menu);
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.text(language == 'tr' ? 'Yorumu düzenle' : 'Edit comment'),
+        );
+        await tester.pumpAndSettle();
+        final field = find.byKey(const ValueKey('community-comment-body'));
+        expect(
+          tester.widget<TextField>(field).controller!.text,
+          'Original thought',
+        );
+        await tester.enterText(field, 'Updated thought');
+        final submit = find.byKey(const ValueKey('community-submit-comment'));
+        await tester.ensureVisible(submit);
+        await tester.tap(submit);
+        await tester.pumpAndSettle();
+        expect(repository.approved, isEmpty);
+        expect(repository.pending.single.body, 'Updated thought');
+        expect(repository.pending.single.score, 3);
+        expect(repository.pending.single.editRevision, 1);
+        expect(repository.pending.single.watchContext?.season, 8);
+        expect(repository.pending.single.watchContext?.episode, 5);
+        expect(tester.takeException(), isNull);
+      },
+    );
+    testWidgets(
       'monthly duration and active calendar days remain distinct at large text ($language)',
       (tester) async {
         final summary = WatchActivitySummary.fromLogs(

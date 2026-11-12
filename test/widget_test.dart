@@ -31,6 +31,8 @@ import 'package:watchloom/features/settings/presentation/settings_page.dart';
 import 'package:watchloom/features/home/presentation/home_page.dart';
 import 'package:watchloom/features/library/presentation/pages/library_page.dart';
 import 'package:watchloom/features/activity/presentation/pages/my_month_page.dart';
+import 'package:watchloom/core/localization/app_recap_strings.dart';
+import 'package:watchloom/core/localization/app_strings.dart';
 import 'helpers/fake_subscription_repository.dart';
 
 void main() {
@@ -229,6 +231,55 @@ void main() {
   });
 
   for (final language in ['en', 'tr']) {
+    testWidgets(
+      'recap arrows and swipe update the selected period label ($language)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        final store = FakeSubscriptionRepository();
+        final premium = SubscriptionController(store);
+        addTearDown(premium.dispose);
+        addTearDown(store.close);
+        final strings = AppStrings(language);
+        final now = DateTime.now();
+        await premiumHarness(
+          tester,
+          premium,
+          locale: Locale(language),
+          home: const Scaffold(body: MyMonthPage()),
+        );
+        expect(
+          find.text(strings.recapPeriodLabel(now, 1, now)),
+          findsOneWidget,
+        );
+        await tester.tap(find.text(language == 'tr' ? 'Günlük' : 'Daily'));
+        await tester.pumpAndSettle();
+        await tester.tap(
+          find.byTooltip(language == 'tr' ? 'Sonraki dönem' : 'Next period'),
+        );
+        await tester.pumpAndSettle();
+        expect(
+          find.text(language == 'tr' ? 'Yarın' : 'Tomorrow'),
+          findsOneWidget,
+        );
+        await tester.tap(find.byKey(const ValueKey('recap-period-label')));
+        await tester.pumpAndSettle();
+        expect(find.text(language == 'tr' ? 'Bugün' : 'Today'), findsOneWidget);
+        final card = find.byKey(const ValueKey('recap-swipe-period'));
+        await tester.ensureVisible(card);
+        await tester.fling(card, const Offset(250, 0), 800);
+        await tester.pumpAndSettle();
+        tester
+            .state<ScrollableState>(find.byType(Scrollable).first)
+            .position
+            .jumpTo(0);
+        await tester.pumpAndSettle();
+        expect(
+          find.text(language == 'tr' ? 'Dün' : 'Yesterday'),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
     testWidgets(
       'period controls fit a small screen at large text ($language)',
       (tester) async {

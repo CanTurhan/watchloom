@@ -22,6 +22,12 @@ abstract interface class CommunityRepository {
     required String body,
     String? parentId,
     bool isSpoiler = false,
+    CommunityWatchContext? watchContext,
+  });
+  Future<void> editComment({
+    required CommunityComment comment,
+    required String body,
+    required bool isSpoiler,
   });
   Future<void> deleteComment(String id);
   Future<void> report({

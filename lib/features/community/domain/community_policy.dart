@@ -95,10 +95,12 @@ abstract final class CommunityPolicy {
     return text;
   }
 
-  /// Only catalog-backed TVMaze series IDs are accepted in this release.
+  /// Catalog-backed series and IMDb movie IDs use separate stable namespaces.
   static void content(String key, CommunityContentKind kind) {
-    if (kind != CommunityContentKind.series ||
-        !RegExp(r'^tvmaze:show:[1-9][0-9]{0,9}$').hasMatch(key)) {
+    final valid = kind == CommunityContentKind.series
+        ? RegExp(r'^tvmaze:show:[1-9][0-9]{0,9}$').hasMatch(key)
+        : RegExp(r'^imdb:movie:tt[0-9]{7,10}$').hasMatch(key);
+    if (!valid) {
       throw const CommunityException(CommunityFailure.invalidContent);
     }
   }

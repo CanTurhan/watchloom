@@ -7,6 +7,8 @@ import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/core/widgets/app_page_header.dart';
 import 'package:watchloom/features/account/presentation/auth_controller.dart';
 import 'package:watchloom/features/community/domain/community_models.dart';
+import 'package:watchloom/features/community/domain/community_watch_context.dart';
+import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/community/domain/community_policy.dart';
 import 'package:watchloom/features/community/domain/community_repository.dart';
 import 'package:watchloom/features/community/presentation/community_access.dart';
@@ -23,9 +25,13 @@ class CommunityPage extends StatefulWidget {
     this.verified = false,
     this.auth,
     this.repositoryForUser,
+    this.contentKind = CommunityContentKind.series,
+    this.watchContext,
     super.key,
   });
   final String contentKey;
+  final CommunityContentKind contentKind;
+  final CommunityWatchContext Function()? watchContext;
   final String seriesName;
   final CommunityRepository? repository;
   final String? viewerUid;
@@ -46,7 +52,15 @@ class CommunityPage extends StatefulWidget {
     return Navigator.of(context).push<void>(
       MaterialPageRoute(
         builder: (_) => CommunityPage(
-          contentKey: 'tvmaze:show:$showId',
+          contentKey: showId >= TvShow.movieIdOffset
+              ? 'imdb:movie:tt${(showId - TvShow.movieIdOffset).toString().padLeft(7, '0')}'
+              : 'tvmaze:show:$showId',
+          contentKind: showId >= TvShow.movieIdOffset
+              ? CommunityContentKind.movie
+              : CommunityContentKind.series,
+          watchContext: () => watchContextForEntry(
+            AppScope.of(context).libraryController.findByShowId(showId),
+          ),
           seriesName: seriesName,
           repository: repository,
           viewerUid: auth?.user?.uid,
@@ -225,7 +239,11 @@ class _CommunityPageState extends State<CommunityPage> {
       final results = await Future.wait<Object?>([
         request(repository.availability),
         request(
-          () => repository.comments(contentKey: widget.contentKey, sort: _sort),
+          () => repository.comments(
+            contentKey: widget.contentKey,
+            contentKind: widget.contentKind,
+            sort: _sort,
+          ),
         ),
         if (owner) request<CommunityProfile?>(repository.profile),
         if (owner)
@@ -316,17 +334,27 @@ class _CommunityPageState extends State<CommunityPage> {
     ).showSnackBar(SnackBar(content: Text(value), showCloseIcon: true));
   }
 
-  Future<void> _compose([CommunityComment? parent]) async {
+  Future<void> _compose([
+    CommunityComment? parent,
+    CommunityComment? editing,
+  ]) async {
     final revision = _sessionRevision.value;
     if (_busy || !await _ensureIdentity() || !mounted) return;
     if (!_currentSession(revision) || !_canParticipate) return;
     final repository = _repository!;
+    final viewing = editing != null
+        ? editing.watchContext
+        : widget.watchContext?.call() ??
+              const CommunityWatchContext(status: 'not_started');
     final result = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
       builder: (_) => _CommentComposer(
         publicName: _profile!.publicName,
+        editing: editing,
+        movie: widget.contentKind == CommunityContentKind.movie,
+        watchContext: viewing,
         parent: parent,
         sessionRevision: _sessionRevision,
         sessionCurrent: () =>
@@ -341,8 +369,18 @@ class _CommunityPageState extends State<CommunityPage> {
               CommunityFailure.verificationRequired,
             );
           }
+          if (editing != null) {
+            await repository.editComment(
+              comment: editing,
+              body: body,
+              isSpoiler: spoiler,
+            );
+            return;
+          }
           await repository.post(
             contentKey: widget.contentKey,
+            contentKind: widget.contentKind,
+            watchContext: viewing,
             body: body,
             parentId: parent?.id,
             isSpoiler: spoiler,
@@ -351,7 +389,8 @@ class _CommunityPageState extends State<CommunityPage> {
       ),
     );
     if (result == true && mounted && _currentSession(revision)) {
-      _message(CommunityStrings.of(context).sent);
+      final s = CommunityStrings.of(context);
+      _message(editing == null ? s.sent : s.editSent);
       await _load();
     }
   }
@@ -385,7 +424,9 @@ class _CommunityPageState extends State<CommunityPage> {
 
   Future<void> _block(CommunityComment comment) async {
     final revision = _sessionRevision.value;
-    if (_busy || !await _ensureIdentity(requireCurrentTerms: false) || !mounted) {
+    if (_busy ||
+        !await _ensureIdentity(requireCurrentTerms: false) ||
+        !mounted) {
       return;
     }
     final s = CommunityStrings.of(context);
@@ -396,7 +437,9 @@ class _CommunityPageState extends State<CommunityPage> {
 
   Future<void> _report(CommunityComment comment) async {
     final revision = _sessionRevision.value;
-    if (_busy || !await _ensureIdentity(requireCurrentTerms: false) || !mounted) {
+    if (_busy ||
+        !await _ensureIdentity(requireCurrentTerms: false) ||
+        !mounted) {
       return;
     }
     final s = CommunityStrings.of(context);
@@ -531,7 +574,9 @@ class _CommunityPageState extends State<CommunityPage> {
     final visible = _visible;
     return Scaffold(
       appBar: AppBar(
-        title: Text(s.title),
+        title: Text(
+          s.titleFor(widget.contentKind == CommunityContentKind.movie),
+        ),
         actions: [
           IconButton(
             tooltip: s.publicIdentity,
@@ -812,6 +857,8 @@ class _CommunityPageState extends State<CommunityPage> {
                     switch (value) {
                       case 'delete':
                         _delete(comment);
+                      case 'edit':
+                        _compose(null, comment);
                       case 'report':
                         _report(comment);
                       case 'block':
@@ -819,6 +866,10 @@ class _CommunityPageState extends State<CommunityPage> {
                     }
                   },
                   itemBuilder: (_) => [
+                    if (own &&
+                        _canParticipate &&
+                        _availability?.canPost == true)
+                      PopupMenuItem(value: 'edit', child: Text(s.edit)),
                     if (own)
                       PopupMenuItem(value: 'delete', child: Text(s.delete)),
                     if (!own && approved) ...[
@@ -827,6 +878,32 @@ class _CommunityPageState extends State<CommunityPage> {
                     ],
                   ],
                 ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 4,
+              children: [
+                Text(
+                  s.watchLabel(
+                    comment.watchContext,
+                    comment.contentKind == CommunityContentKind.movie,
+                  ),
+                  key: ValueKey('community-watch-${comment.id}'),
+                  style: const TextStyle(
+                    color: AppColors.accentSoft,
+                    fontSize: 12,
+                  ),
+                ),
+                if (comment.editedAt != null)
+                  Text(
+                    s.edited,
+                    style: const TextStyle(
+                      color: AppColors.textSecondary,
+                      fontSize: 11,
+                    ),
+                  ),
               ],
             ),
             if (!approved) ...[
@@ -974,9 +1051,15 @@ class _CommentComposer extends StatefulWidget {
     required this.sessionRevision,
     required this.sessionCurrent,
     this.parent,
+    this.editing,
+    required this.movie,
+    this.watchContext,
   });
   final String publicName;
   final CommunityComment? parent;
+  final CommunityComment? editing;
+  final bool movie;
+  final CommunityWatchContext? watchContext;
   final Future<void> Function(String body, bool spoiler) submit;
   final Listenable sessionRevision;
   final bool Function() sessionCurrent;
@@ -994,6 +1077,8 @@ class _CommentComposerState extends State<_CommentComposer> {
   @override
   void initState() {
     super.initState();
+    _text.text = widget.editing?.body ?? '';
+    _spoiler = widget.editing?.isSpoiler ?? false;
     widget.sessionRevision.addListener(_sessionChanged);
   }
 
@@ -1023,6 +1108,12 @@ class _CommentComposerState extends State<_CommentComposer> {
     });
     try {
       final body = CommunityPolicy.body(_text.text);
+      if (widget.editing != null &&
+          body == widget.editing!.body &&
+          _spoiler == widget.editing!.isSpoiler) {
+        if (mounted) Navigator.pop(context, false);
+        return;
+      }
       await widget.submit(body, _spoiler);
       if (mounted && widget.sessionCurrent()) Navigator.pop(context, true);
     } catch (error) {
@@ -1053,7 +1144,11 @@ class _CommentComposerState extends State<_CommentComposer> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  widget.parent == null ? s.write : s.reply,
+                  widget.editing != null
+                      ? s.edit
+                      : widget.parent == null
+                      ? s.write
+                      : s.reply,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
@@ -1075,6 +1170,19 @@ class _CommentComposerState extends State<_CommentComposer> {
                   ),
                 ],
                 const SizedBox(height: 18),
+                Text(
+                  s.watchLabel(widget.watchContext, widget.movie),
+                  style: const TextStyle(color: AppColors.accentSoft),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  s.snapshotNotice,
+                  style: const TextStyle(
+                    color: AppColors.textSecondary,
+                    fontSize: 12,
+                  ),
+                ),
+                const SizedBox(height: 12),
                 TextField(
                   key: const ValueKey('community-comment-body'),
                   controller: _text,
@@ -1083,7 +1191,9 @@ class _CommentComposerState extends State<_CommentComposer> {
                   maxLines: 8,
                   maxLength: CommunityPolicy.maxBodyLength,
                   textCapitalization: TextCapitalization.sentences,
-                  decoration: InputDecoration(hintText: s.commentHint),
+                  decoration: InputDecoration(
+                    hintText: s.hintFor(widget.movie),
+                  ),
                 ),
                 CheckboxListTile(
                   value: _spoiler,

@@ -186,7 +186,12 @@ class FirestoreCommunityRepository implements CommunityRepository {
     required String contentKey,
   }) => _guard(() async {
     await _prepareOwner();
-    CommunityPolicy.content(contentKey, CommunityContentKind.series);
+    CommunityPolicy.content(
+      contentKey,
+      contentKey.startsWith('imdb:movie:')
+          ? CommunityContentKind.movie
+          : CommunityContentKind.series,
+    );
     final page = await _comments
         .where('authorUid', isEqualTo: _owner)
         .where('contentKey', isEqualTo: contentKey)
@@ -204,6 +209,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
     required String body,
     String? parentId,
     bool isSpoiler = false,
+    CommunityWatchContext? watchContext,
   }) => _guard(() async {
     CommunityPolicy.content(contentKey, contentKind);
     final text = CommunityPolicy.body(body);
@@ -252,6 +258,8 @@ class FirestoreCommunityRepository implements CommunityRepository {
           'downVotes': 0,
           'score': 0,
           'createdAt': FieldValue.serverTimestamp(),
+          'editRevision': 0,
+          if (watchContext != null) 'watchContext': watchContext.toMap(),
         });
         tx.update(profileRef, _counter(data, 'Post', ref.id, alternate));
       }),
@@ -267,6 +275,60 @@ class FirestoreCommunityRepository implements CommunityRepository {
   @override
   Future<void> deleteComment(String id) =>
       _guard(() => _comments.doc(id).delete());
+
+  @override
+  Future<void> editComment({
+    required CommunityComment comment,
+    required String body,
+    required bool isSpoiler,
+  }) => _guard(() async {
+    final text = CommunityPolicy.body(body);
+    if (comment.authorUid != _owner ||
+        !RegExp(r'^[A-Za-z0-9]{20}$').hasMatch(comment.id)) {
+      throw const CommunityException(CommunityFailure.permissionDenied);
+    }
+    final available = await availability();
+    if (!available.canPost) {
+      throw const CommunityException(CommunityFailure.unavailable);
+    }
+    await _prepareOwner();
+    final profileRef = _profile(_owner), ref = _comments.doc(comment.id);
+    await CommunitySubmission.attempt(
+      submit: (alternate) => firestore.runTransaction((tx) async {
+        final profile = await tx.get(profileRef);
+        final current = (await tx.get(ref)).data();
+        if (current == null ||
+            current['authorUid'] != _owner ||
+            current['contentKey'] != comment.contentKey) {
+          throw const CommunityException(CommunityFailure.invalidContent);
+        }
+        if (!profile.exists || !_identity(profile.data()!).acceptedTerms) {
+          throw const CommunityException(CommunityFailure.termsRequired);
+        }
+        if ((current['editRevision'] ?? 0) != comment.editRevision) {
+          throw const CommunityException(CommunityFailure.conflict);
+        }
+        tx.update(ref, {
+          'body': text,
+          'isSpoiler': isSpoiler,
+          'status': 'pending',
+          'editedAt': FieldValue.serverTimestamp(),
+          'editRevision': comment.editRevision + 1,
+          'moderationNextAt': FieldValue.serverTimestamp(),
+        });
+        tx.update(
+          profileRef,
+          _counter(profile.data()!, 'Post', ref.id, alternate),
+        );
+      }),
+      canRetry: _counterDenied,
+    );
+    await CommunitySubmission.requestModeration(
+      commentId: ref.id,
+      endpoint: available.moderationEndpoint,
+      request: moderationRequest,
+    );
+  });
 
   @override
   Future<void> report({
@@ -432,6 +494,9 @@ class FirestoreCommunityRepository implements CommunityRepository {
       upVotes: data['upVotes'] as int? ?? 0,
       downVotes: data['downVotes'] as int? ?? 0,
       score: data['score'] as int? ?? 0,
+      watchContext: CommunityWatchContext.fromMap(data['watchContext']),
+      editedAt: (data['editedAt'] as Timestamp?)?.toDate(),
+      editRevision: data['editRevision'] as int? ?? 0,
     );
   }
 

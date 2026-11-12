@@ -88,7 +88,10 @@ export class ModerationService {
         if (current.data.body !== claim.data.body || current.data.authorName !== claim.data.authorName
           || current.data.authorUid !== claim.data.authorUid || current.data.policyVersion !== claim.data.policyVersion
           || current.data.contentKey !== claim.data.contentKey || current.data.contentKind !== claim.data.contentKind
-          || current.data.parentId !== claim.data.parentId || current.data.isSpoiler !== claim.data.isSpoiler) {
+          || current.data.parentId !== claim.data.parentId || current.data.isSpoiler !== claim.data.isSpoiler
+          || (current.data.editRevision || 0) !== (claim.data.editRevision || 0)
+          || ['status', 'season', 'episode'].some(key =>
+            (current.data.watchContext?.[key] ?? null) !== (claim.data.watchContext?.[key] ?? null))) {
           throw new ServiceError('submission_changed');
         }
         const context = await this.context(current.data, tx);

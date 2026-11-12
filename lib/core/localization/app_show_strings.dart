@@ -1,6 +1,41 @@
 import 'package:watchloom/core/localization/app_strings.dart';
 
 extension AppShowStrings on AppStrings {
+  String noSummaryFor(bool movie) => movie
+      ? value(
+          en: 'No summary is available for this movie.',
+          tr: 'Bu film için özet bulunmuyor.',
+        )
+      : value(
+          en: 'No summary is available for this series.',
+          tr: 'Bu dizi için özet bulunmuyor.',
+        );
+  String searchTitleFor(bool movie) =>
+      movie ? value(en: 'Search Movies', tr: 'Film Ara') : searchShows;
+  String searchHintFor(bool movie) => movie
+      ? value(en: 'Search by movie name', tr: 'Film adıyla ara')
+      : searchHint;
+  String searchIntroFor(bool movie) => movie
+      ? value(
+          en: 'Find a movie and view its summary and release information.',
+          tr: 'Bir film bul; özetini ve yayın bilgilerini görüntüle.',
+        )
+      : searchIntro;
+  String noResultsFor(bool movie) => movie
+      ? value(en: 'No matching movies found.', tr: 'Eşleşen film bulunamadı.')
+      : noShowsFound;
+  String notFoundFor(bool movie) => movie
+      ? value(
+          en: 'The requested movie could not be found.',
+          tr: 'İstenen film bulunamadı.',
+        )
+      : notFoundError;
+  String dataErrorFor(bool movie) => movie
+      ? value(
+          en: 'The movie data could not be loaded.',
+          tr: 'Film verileri yüklenemedi.',
+        )
+      : invalidResponseError;
   String get searchShows => value(en: 'Search Shows', tr: 'Dizi Ara');
 
   String get searchHint =>

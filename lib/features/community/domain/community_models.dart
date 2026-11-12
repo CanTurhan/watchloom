@@ -21,6 +21,7 @@ enum CommunityFailure {
   rateLimited,
   permissionDenied,
   termsRequired,
+  conflict,
 }
 
 class CommunityException implements Exception {
@@ -76,6 +77,9 @@ class CommunityComment {
     this.upVotes = 0,
     this.downVotes = 0,
     this.score = 0,
+    this.watchContext,
+    this.editedAt,
+    this.editRevision = 0,
   });
   final String id;
   final String contentKey;
@@ -93,6 +97,9 @@ class CommunityComment {
   final int upVotes;
   final int downVotes;
   final int score;
+  final CommunityWatchContext? watchContext;
+  final DateTime? editedAt;
+  final int editRevision;
 
   CommunityComment withVotes({
     required int upVotes,
@@ -113,5 +120,49 @@ class CommunityComment {
     upVotes: upVotes,
     downVotes: downVotes,
     score: score,
+    watchContext: watchContext,
+    editedAt: editedAt,
+    editRevision: editRevision,
   );
+}
+
+/// A self-reported snapshot at submission time, not a live library link.
+class CommunityWatchContext {
+  const CommunityWatchContext({
+    required this.status,
+    this.season,
+    this.episode,
+  });
+  final String status;
+  final int? season;
+  final int? episode;
+  Map<String, Object?> toMap() => {
+    'status': status,
+    'season': season,
+    'episode': episode,
+  };
+  static CommunityWatchContext? fromMap(Object? value) {
+    if (value is! Map ||
+        !['not_started', 'watching', 'watched'].contains(value['status'])) {
+      return null;
+    }
+    final season = value['season'], episode = value['episode'];
+    if (value['status'] == 'not_started' && (season != null || episode != null)) {
+      return null;
+    }
+    if ((season != null || episode != null) &&
+        (season is! int ||
+            episode is! int ||
+            season < 0 ||
+            season > 10000 ||
+            episode < 1 ||
+            episode > 100000)) {
+      return null;
+    }
+    return CommunityWatchContext(
+      status: value['status'] as String,
+      season: season as int?,
+      episode: episode as int?,
+    );
+  }
 }

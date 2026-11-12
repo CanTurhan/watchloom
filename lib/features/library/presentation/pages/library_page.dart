@@ -257,7 +257,12 @@ class _LibraryPageState extends State<LibraryPage> {
               ),
               const SizedBox(height: 20),
               Text(
-                strings.emptyLibraryTitle,
+                libraryController.entries.isNotEmpty
+                    ? strings.value(
+                        en: 'No titles match these filters',
+                        tr: 'Bu filtrelere uygun yapım yok',
+                      )
+                    : strings.emptyLibraryTitle,
                 style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w800,
@@ -266,8 +271,28 @@ class _LibraryPageState extends State<LibraryPage> {
               const SizedBox(height: 8),
               Text(
                 _favoritesOnly
-                    ? strings.noFavoriteShows
-                    : strings.emptyLibraryDescription,
+                    ? (_moviesOnly == true
+                          ? strings.value(
+                              en: 'You have no favorite movies yet.',
+                              tr: 'Henüz favori filmin yok.',
+                            )
+                          : _moviesOnly == false
+                          ? strings.noFavoriteShows
+                          : strings.value(
+                              en: 'You have no favorite titles yet.',
+                              tr: 'Henüz favori yapımın yok.',
+                            ))
+                    : _moviesOnly == true
+                    ? strings.value(
+                        en: 'Search for a movie and add it to your library.',
+                        tr: 'Bir film ara ve kütüphanene ekle.',
+                      )
+                    : _moviesOnly == false
+                    ? strings.emptyLibraryDescription
+                    : strings.value(
+                        en: 'Search for a series or movie and add it to your library.',
+                        tr: 'Bir dizi veya film ara ve kütüphanene ekle.',
+                      ),
                 textAlign: TextAlign.center,
                 style: const TextStyle(
                   color: AppColors.textSecondary,
@@ -536,7 +561,14 @@ class _LibraryPageState extends State<LibraryPage> {
       builder: (dialogContext) {
         return AlertDialog(
           title: Text(strings.removeFromLibrary),
-          content: Text(strings.removeConfirmation),
+          content: Text(
+            entry.isMovie
+                ? strings.value(
+                    en: 'Remove this movie from your library?',
+                    tr: 'Bu film kütüphanenden kaldırılsın mı?',
+                  )
+                : strings.removeConfirmation,
+          ),
           actions: [
             TextButton(
               onPressed: () {
@@ -565,9 +597,18 @@ class _LibraryPageState extends State<LibraryPage> {
       return;
     }
 
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(strings.showRemoved)));
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          entry.isMovie
+              ? strings.value(
+                  en: 'Movie removed from library.',
+                  tr: 'Film kütüphaneden kaldırıldı.',
+                )
+              : strings.showRemoved,
+        ),
+      ),
+    );
   }
 }
 

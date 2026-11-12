@@ -73,6 +73,40 @@ test('verified allowed text is published once with minimal audit data; repeat re
     assert.ok(!('body' in data) && !('authorName' in data) && !('email' in data));
   }
 });
+
+test('movie comments and watch snapshots are validated without changing legacy series', () => {
+  assert.equal(localReason({...clean(), contentKind: 'movie', contentKey: 'imdb:movie:tt1375666',
+    watchContext: {status: 'watched', season: null, episode: null}}), null);
+  assert.equal(localReason({...clean(), watchContext: {status: 'watching', season: 8, episode: 5}}), null);
+  for (const watchContext of [{status: 'not_started', season: 8, episode: 5},
+    {status: 'watching', season: -1, episode: 1}, {status: 'watched', season: null, episode: 5}]) {
+    assert.equal(localReason({...clean(), watchContext}), 'invalidContent');
+  }
+});
+
+test('an edited approved comment is rechecked while preserving vote totals and snapshot', async () => {
+  const store = memory(), s = service(store);
+  const context = {status: 'watching', season: 8, episode: 5};
+  store.docs.set(`communityComments/${id}`, {...clean(), watchContext: context, editRevision: 0, upVotes: 4, downVotes: 1, score: 3});
+  await s.instance.process(id);
+  Object.assign(store.docs.get(`communityComments/${id}`), {status: 'pending', body: 'A revised thought', editRevision: 1, editedAt: new Date()});
+  assert.equal((await s.instance.process(id)).status, 'approved');
+  assert.equal(s.calls, 2);
+  const saved = store.docs.get(`communityComments/${id}`);
+  assert.equal(saved.score, 3);
+  assert.equal(saved.upVotes, 4);
+  assert.deepEqual(saved.watchContext, context);
+});
+
+test('same body from a newer edit revision cannot receive a stale moderation verdict', async () => {
+  const store = memory();
+  const s = service(store, {classify: async () => {
+    Object.assign(store.docs.get(`communityComments/${id}`), {editRevision: 2});
+    return {status: 'approved', reason: null, model: 'test'};
+  }});
+  assert.equal((await s.instance.process(id)).status, 'pending');
+  assert.equal(store.docs.get(`communityComments/${id}`).status, 'pending');
+});
 test('a different viewer cannot moderate or probe another private pending comment', async () => {
   const store = memory(), s = service(store);
   await assert.rejects(s.instance.process(id, {viewerUid: 'stranger'}), {code: 'forbidden'});

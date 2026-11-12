@@ -63,8 +63,9 @@ function verifiedAccount(user) {
     user.providerUserInfo?.some(provider => ['apple.com', 'google.com'].includes(provider.providerId)) === true);
 }
 function safeToApprove(data) {
-  return data?.schema === 1 && data.status === 'pending' && data.contentKind === 'series'
-    && /^tvmaze:show:[1-9][0-9]{0,9}$/.test(data.contentKey || '')
+  return data?.schema === 1 && data.status === 'pending'
+    && ((data.contentKind === 'series' && /^tvmaze:show:[1-9][0-9]{0,9}$/.test(data.contentKey || ''))
+      || (data.contentKind === 'movie' && /^imdb:movie:tt[0-9]{7,10}$/.test(data.contentKey || '')))
     && typeof data.authorUid === 'string' && /^[A-Za-z0-9_-]{1,128}$/.test(data.authorUid)
     && typeof data.authorName === 'string'
     && (/^@[a-z][a-z0-9_]{2,19}$/.test(data.authorName) || /^[\p{L}\p{M}\p{N} _-]{3,24}$/u.test(data.authorName))

@@ -6,8 +6,49 @@ class CommunityStrings {
   CommunityStrings.of(BuildContext context)
     : tr = AppStrings.of(context).isTurkish;
   final bool tr;
+  CommunityStrings.forLanguage(String language) : tr = language == 'tr';
   String text(String en, String turkish) => tr ? turkish : en;
   String get title => text('Series discussion', 'Dizi yorumları');
+  String titleFor(bool movie) =>
+      movie ? text('Movie discussion', 'Film yorumları') : title;
+  String hintFor(bool movie) => movie
+      ? text(
+          'What did you think of this movie?',
+          'Bu film hakkında ne düşünüyorsun?',
+        )
+      : commentHint;
+  String get edit => text('Edit comment', 'Yorumu düzenle');
+  String get edited => text('Edited', 'Düzenlendi');
+  String get editSent => text(
+    'Changes saved for safety checks. Votes and viewing context are preserved.',
+    'Değişiklikler güvenlik kontrolüne gönderildi. Oylar ve yorum anındaki izleme bilgisi korundu.',
+  );
+  String get snapshotNotice => text(
+    'Your viewing status below will be visible with your comment. It reflects when you first posted.',
+    'Aşağıdaki izleme durumun yorumunla birlikte görünür. İlk yorum yaptığın anı yansıtır.',
+  );
+  String watchLabel(CommunityWatchContext? context, bool movie) {
+    if (context == null) {
+      return text('Viewing status not shared', 'İzleme durumu belirtilmedi');
+    }
+    if (context.status == 'not_started') {
+      return text('Not watched yet', 'Henüz izlenmedi');
+    }
+    final progress = context.season != null && context.episode != null
+        ? text(
+            'Season ${context.season} · Episode ${context.episode}',
+            '${context.season}. sezon · ${context.episode}. bölüm',
+          )
+        : null;
+    if (context.status == 'watched') {
+      final watched = movie
+          ? text('Watched', 'İzlendi')
+          : text('Completed', 'Tamamlandı');
+      return progress == null ? watched : '$watched · $progress';
+    }
+    return progress ?? text('Watching', 'İzleniyor');
+  }
+
   String get subtitle => text(
     'Share a thought. Discover another perspective.',
     'Fikrini paylaş. Başka bir bakış keşfet.',
@@ -192,6 +233,10 @@ class CommunityStrings {
   String failure(Object error) {
     if (error is! CommunityException) return unavailable;
     return switch (error.failure) {
+      CommunityFailure.conflict => text(
+        'This comment changed elsewhere. Refresh before editing again.',
+        'Bu yorum başka bir yerde değişti. Yenileyip tekrar düzenle.',
+      ),
       CommunityFailure.verificationRequired => verification,
       CommunityFailure.identityRequired => text(
         'Choose a public identity before participating.',

@@ -45,6 +45,15 @@ class _LibraryShowMetadataState extends State<LibraryShowMetadata> {
   }
 
   Future<_ShowMetadata> _loadMetadata() {
+    if (widget.entry.isMovie) {
+      return Future.value(
+        _ShowMetadata(
+          platform: widget.entry.channelName,
+          releaseDate: widget.entry.premiered,
+          castNames: const [],
+        ),
+      );
+    }
     return _cache.putIfAbsent(widget.entry.showId, () async {
       try {
         final response = await _dio.get<Map<String, dynamic>>(

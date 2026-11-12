@@ -111,7 +111,7 @@ class _ShowSearchPageState extends State<ShowSearchPage> {
     final strings = AppStrings.of(context);
 
     return Scaffold(
-      appBar: AppBar(title: Text(strings.searchShows)),
+      appBar: AppBar(title: Text(strings.searchTitleFor(_movies))),
       body: SafeArea(
         top: false,
         child: Column(
@@ -158,7 +158,7 @@ class _ShowSearchPageState extends State<ShowSearchPage> {
                   _runSearch(value);
                 },
                 decoration: InputDecoration(
-                  hintText: strings.searchHint,
+                  hintText: strings.searchHintFor(_movies),
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _controller.text.isEmpty
                       ? null
@@ -215,7 +215,7 @@ class _ShowSearchPageState extends State<ShowSearchPage> {
     if (query.length < 2) {
       return _MessageState(
         icon: Icons.manage_search_rounded,
-        title: strings.searchIntro,
+        title: strings.searchIntroFor(_movies),
         description: strings.minimumTwoCharacters,
       );
     }
@@ -223,7 +223,7 @@ class _ShowSearchPageState extends State<ShowSearchPage> {
     if (!_isLoading && _results.isEmpty) {
       return _MessageState(
         icon: Icons.tv_off_rounded,
-        title: strings.noShowsFound,
+        title: strings.noResultsFor(_movies),
         description: strings.tryAnotherSearch,
       );
     }
@@ -260,11 +260,11 @@ class _ShowSearchPageState extends State<ShowSearchPage> {
       case ShowFailureType.rateLimited:
         return strings.rateLimitError;
       case ShowFailureType.notFound:
-        return strings.notFoundError;
+        return strings.notFoundFor(_movies);
       case ShowFailureType.invalidResponse:
-        return strings.invalidResponseError;
+        return strings.dataErrorFor(_movies);
       case ShowFailureType.unknown:
-        return strings.unknownError;
+        return _movies ? strings.dataErrorFor(true) : strings.unknownError;
     }
   }
 }
@@ -369,8 +369,10 @@ class _ShowResultCard extends StatelessWidget {
                             ],
                             const SizedBox(height: 8),
                             Text(
-                              show.summary.isEmpty
-                                  ? AppStrings.of(context).noSummary
+                              show.summary.trim().isEmpty
+                                  ? AppStrings.of(
+                                      context,
+                                    ).noSummaryFor(show.isMovie)
                                   : show.summary,
                               maxLines: 3,
                               overflow: TextOverflow.ellipsis,

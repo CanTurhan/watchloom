@@ -23,7 +23,7 @@ class AppStrings {
   String get home => value(en: 'Home', tr: 'Ana Sayfa');
   String get library => value(en: 'Library', tr: 'Kütüphane');
   String get discover => value(en: 'Discover', tr: 'Keşfet');
-  String get myMonth => value(en: 'My Month', tr: 'Ayım');
+  String get myMonth => value(en: 'Recap', tr: 'Özet');
   String get profile => value(en: 'Profile', tr: 'Profil');
 
   String get continueWatching =>

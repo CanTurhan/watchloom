@@ -86,6 +86,33 @@ service cloud.firestore {
         && !exists(/databases/$(database)/documents/communityBlocks/$(uid)/authors/$(parent.authorUid))
         && !exists(/databases/$(database)/documents/communityBlocks/$(parent.authorUid)/authors/$(uid));
     }
+    function validContent(data) {
+      return (data.contentKind == 'series' && data.contentKey.matches('^tvmaze:show:[1-9][0-9]{0,9}$'))
+        || (data.contentKind == 'movie' && data.contentKey.matches('^imdb:movie:tt[0-9]{7,10}$'));
+    }
+    function validWatchContext(data) {
+      let value = data.get('watchContext', null);
+      return value == null || (value is map && value.keys().hasAll(['status', 'season', 'episode'])
+        && value.keys().hasOnly(['status', 'season', 'episode'])
+        && value.status in ['not_started', 'watching', 'watched']
+        && ((value.season == null && value.episode == null)
+          || (data.contentKind == 'series' && value.status in ['watching', 'watched']
+            && value.season is int && value.season >= 0 && value.season <= 10000
+            && value.episode is int && value.episode >= 1 && value.episode <= 100000))
+        && (data.contentKind != 'movie' || value.status in ['not_started', 'watched']));
+    }
+    function editWrite(uid, id, before, after) {
+      return owns(before.authorUid) && active(uid) && communityReady()
+        && validContent(after) && validWatchContext(after)
+        && after.diff(before).affectedKeys().hasOnly(['body', 'isSpoiler', 'status', 'editedAt', 'editRevision', 'moderationNextAt'])
+        && (after.body != before.body || after.isSpoiler != before.isSpoiler)
+        && safeBody(after.body) && after.isSpoiler is bool && after.status == 'pending'
+        && after.editedAt == request.time && after.moderationNextAt == request.time
+        && after.editRevision is int && after.editRevision == before.get('editRevision', 0) + 1
+        && get(/databases/$(database)/documents/communityProfiles/$(uid)).data.acceptedPolicyVersion == '2026-11-06-auto-v1'
+        && getAfter(/databases/$(database)/documents/communityProfiles/$(uid)).data.lastPostId == id
+        && getAfter(/databases/$(database)/documents/communityProfiles/$(uid)).data.lastPostAt == request.time;
+    }
     function voteValue(uid, commentId, after) {
       let path = /databases/$(database)/documents/users/$(uid)/communityVotes/$(commentId);
       return after ? (existsAfter(path) ? getAfter(path).data.value : 0)
@@ -182,7 +209,11 @@ service cloud.firestore {
           && request.resource.data.acceptedPolicyVersion == '2026-11-06-auto-v1'
           && request.resource.data.updatedAt == request.time && request.resource.data.acceptedPolicyAt == request.time)
         || (submissionCounter(resource.data, request.resource.data, 'Post', request.resource.data.lastPostId, 20, 30) && communityReady()
-          && !exists(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId))
+          && (!exists(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId))
+            || (getAfter(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId)).data.status == 'pending'
+              && getAfter(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId)).data.editedAt == request.time
+              && getAfter(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId)).data.editRevision
+                == get(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId)).data.get('editRevision', 0) + 1))
           && getAfter(/databases/$(database)/documents/communityComments/$(request.resource.data.lastPostId)).data.authorUid == uid)
         || (submissionCounter(resource.data, request.resource.data, 'Report', request.resource.data.lastReportId, 5, 60)
           && !exists(/databases/$(database)/documents/communityReports/$(request.resource.data.lastReportId))
@@ -208,10 +239,10 @@ service cloud.firestore {
         && commentId.matches('^[A-Za-z0-9]{20}$')
         && request.resource.data.keys().hasOnly(['schema', 'contentKey', 'contentKind', 'authorUid',
           'authorName', 'body', 'parentId', 'isSpoiler', 'status', 'createdAt', 'policyVersion',
-          'moderationNextAt', 'scoreSchema', 'upVotes', 'downVotes', 'score'])
+          'moderationNextAt', 'scoreSchema', 'upVotes', 'downVotes', 'score', 'watchContext', 'editRevision'])
         && request.resource.data.schema == 1 && request.resource.data.authorUid == request.auth.uid
-        && request.resource.data.contentKind == 'series'
-        && request.resource.data.contentKey.matches('^tvmaze:show:[1-9][0-9]{0,9}$')
+        && validContent(request.resource.data) && validWatchContext(request.resource.data)
+        && request.resource.data.get('editRevision', 0) == 0
         && request.resource.data.status == 'pending' && request.resource.data.createdAt == request.time
         && request.resource.data.policyVersion == '2026-11-06-auto-v1'
         && request.resource.data.moderationNextAt == request.time
@@ -229,7 +260,8 @@ service cloud.firestore {
           && request.resource.data.parentId.matches('^[A-Za-z0-9]{20}$')
           && validReply(request.resource.data.parentId, request.resource.data.contentKey, request.auth.uid)));
       allow update: if request.auth != null
-        && scoreWrite(request.auth.uid, commentId, resource.data, request.resource.data);
+        && (scoreWrite(request.auth.uid, commentId, resource.data, request.resource.data)
+          || editWrite(request.auth.uid, commentId, resource.data, request.resource.data));
       allow delete: if owns(resource.data.authorUid)
         && (active(resource.data.authorUid) || erasing(resource.data.authorUid));
     }
