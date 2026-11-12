@@ -8,6 +8,7 @@ import 'package:watchloom/core/theme/app_colors.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
 import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
+import 'package:watchloom/features/shows/data/repositories/media_catalog_repository.dart';
 
 class ShowSearchPage extends StatefulWidget {
   const ShowSearchPage({
@@ -32,6 +33,7 @@ class _ShowSearchPageState extends State<ShowSearchPage> {
 
   bool _isLoading = false;
   int _requestId = 0;
+  bool _movies = false;
 
   @override
   void dispose() {
@@ -77,7 +79,10 @@ class _ShowSearchPageState extends State<ShowSearchPage> {
     });
 
     try {
-      final results = await widget.showRepository.searchShows(query);
+      final repository = widget.showRepository;
+      final results = _movies && repository is MediaCatalogRepository
+          ? await repository.searchMovies(query)
+          : await repository.searchShows(query);
 
       if (!mounted || currentRequestId != _requestId) {
         return;
@@ -110,6 +115,36 @@ class _ShowSearchPageState extends State<ShowSearchPage> {
         top: false,
         child: Column(
           children: [
+            if (widget.showRepository is MediaCatalogRepository)
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: SegmentedButton<bool>(
+                  segments: [
+                    ButtonSegment(
+                      value: false,
+                      label: Text(strings.value(en: 'Series', tr: 'Diziler')),
+                      icon: const Icon(Icons.tv),
+                    ),
+                    ButtonSegment(
+                      value: true,
+                      label: Text(strings.value(en: 'Movies', tr: 'Filmler')),
+                      icon: const Icon(Icons.movie_outlined),
+                    ),
+                  ],
+                  selected: {_movies},
+                  onSelectionChanged: (values) {
+                    _debounce?.cancel();
+                    _requestId++;
+                    setState(() {
+                      _movies = values.single;
+                      _results = const [];
+                      _failure = null;
+                      _isLoading = false;
+                    });
+                    _runSearch(_controller.text);
+                  },
+                ),
+              ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
               child: TextField(

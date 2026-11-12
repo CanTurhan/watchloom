@@ -13,6 +13,7 @@ import 'package:watchloom/features/shows/domain/repositories/show_repository.dar
 import 'package:watchloom/features/shows/presentation/widgets/show_detail_personal_panel.dart';
 import 'package:watchloom/features/community/presentation/community_page.dart';
 import 'package:watchloom/features/community/presentation/community_strings.dart';
+import 'package:watchloom/features/shows/presentation/widgets/trailer_button.dart';
 
 class ShowDetailPage extends StatefulWidget {
   const ShowDetailPage({
@@ -151,19 +152,26 @@ class _ShowDetailPageState extends State<ShowDetailPage> {
                   },
                 ),
                 const SizedBox(height: 14),
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.forum_outlined),
-                    title: Text(CommunityStrings.of(context).title),
-                    subtitle: Text(CommunityStrings.of(context).subtitle),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => CommunityPage.open(
-                      context,
-                      showId: _show.id,
-                      seriesName: _show.name,
+                if (_show.trailerUrl != null)
+                  TrailerButton(
+                    url: _show.trailerUrl!,
+                    rating: _show.contentRating,
+                  ),
+                if (!_show.isMovie) ...[
+                  Card(
+                    child: ListTile(
+                      leading: const Icon(Icons.forum_outlined),
+                      title: Text(CommunityStrings.of(context).title),
+                      subtitle: Text(CommunityStrings.of(context).subtitle),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => CommunityPage.open(
+                        context,
+                        showId: _show.id,
+                        seriesName: _show.name,
+                      ),
                     ),
                   ),
-                ),
+                ],
                 const SizedBox(height: 26),
                 _SectionTitle(strings.summaryTitle),
                 const SizedBox(height: 10),
@@ -176,34 +184,43 @@ class _ShowDetailPageState extends State<ShowDetailPage> {
                   ),
                 ),
                 const SizedBox(height: 28),
-                _SectionTitle(strings.nextEpisodeTitle),
-                const SizedBox(height: 12),
-                if (_show.nextEpisode != null)
-                  _EpisodeCard(
-                    episode: _show.nextEpisode!,
-                    dateLabel: _episodeDateLabel(strings, _show.nextEpisode!),
-                    accent: AppColors.accent,
-                  )
-                else
-                  _EmptyEpisodeCard(text: strings.noUpcomingEpisode),
-                if (_show.previousEpisode != null) ...[
-                  const SizedBox(height: 28),
-                  _SectionTitle(strings.previousEpisodeTitle),
+                if (!_show.isMovie) ...[
+                  _SectionTitle(strings.nextEpisodeTitle),
                   const SizedBox(height: 12),
-                  _EpisodeCard(
-                    episode: _show.previousEpisode!,
-                    dateLabel:
-                        _show.previousEpisode!.airDate ??
-                        strings.releaseDateUnknown,
-                    accent: AppColors.green,
-                  ),
+                  if (_show.nextEpisode != null)
+                    _EpisodeCard(
+                      episode: _show.nextEpisode!,
+                      dateLabel: _episodeDateLabel(strings, _show.nextEpisode!),
+                      accent: AppColors.accent,
+                    )
+                  else
+                    _EmptyEpisodeCard(text: strings.noUpcomingEpisode),
+                  if (_show.previousEpisode != null) ...[
+                    const SizedBox(height: 28),
+                    _SectionTitle(strings.previousEpisodeTitle),
+                    const SizedBox(height: 12),
+                    _EpisodeCard(
+                      episode: _show.previousEpisode!,
+                      dateLabel:
+                          _show.previousEpisode!.airDate ??
+                          strings.releaseDateUnknown,
+                      accent: AppColors.green,
+                    ),
+                  ],
                 ],
                 const SizedBox(height: 30),
                 Center(
                   child: TextButton.icon(
                     onPressed: _openTvMaze,
                     icon: const Icon(Icons.open_in_new_rounded),
-                    label: Text(strings.dataByTvMaze),
+                    label: Text(
+                      _show.isMovie
+                          ? strings.value(
+                              en: 'Movie data: Cinemeta · View on IMDb',
+                              tr: 'Film verisi: Cinemeta · IMDb’de görüntüle',
+                            )
+                          : strings.dataByTvMaze,
+                    ),
                   ),
                 ),
               ]),

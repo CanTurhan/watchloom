@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:watchloom/features/activity/domain/entities/achievement.dart';
 import 'package:watchloom/features/activity/domain/entities/episode_watch_log.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
+import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 
 /// A versioned, validated snapshot. No authentication tokens or Premium state.
 class LibraryBackup {
@@ -22,7 +23,17 @@ class LibraryBackup {
   Uint8List encode() {
     final json = utf8.encode(
       jsonEncode({
-        'schema': 1,
+        // Older clients must refuse movie backups instead of silently restoring
+        // movies as series and stripping their metadata on the next sync.
+        'schema':
+            entries.any((row) => row['media_type'] == 'movie') ||
+                logs.any(
+                  (row) =>
+                      row['show_id'] is int &&
+                      (row['show_id'] as int) >= TvShow.movieIdOffset,
+                )
+            ? 2
+            : 1,
         'entries': entries,
         'logs': logs,
         'achievements': achievements,
@@ -41,7 +52,7 @@ class LibraryBackup {
     decoder.add(bytes);
     decoder.close();
     final data = jsonDecode(utf8.decode(output.bytes));
-    if (data is! Map || data['schema'] != 1) {
+    if (data is! Map || (data['schema'] != 1 && data['schema'] != 2)) {
       throw const FormatException('unsupported-backup');
     }
     List<Map<String, Object?>> rows(String key) {

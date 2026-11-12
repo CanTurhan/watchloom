@@ -77,6 +77,27 @@ class ProfilePage extends StatelessWidget {
                 iconColor: const Color(0xFF4ADE80),
               ),
               const SizedBox(height: 28),
+              _StatisticCard(
+                icon: Icons.movie_outlined,
+                value: '${controller.totalMovies}',
+                label: strings.value(
+                  en: 'Movies watched',
+                  tr: 'İzlenen filmler',
+                ),
+                iconColor: AppColors.accentSoft,
+              ),
+              const SizedBox(height: 12),
+              _StatisticCard(
+                icon: Icons.timelapse,
+                value:
+                    '${controller.totalWatchMinutes} ${strings.value(en: 'min', tr: 'dk')}',
+                label: strings.value(
+                  en: 'Total watch time',
+                  tr: 'Toplam izleme süresi',
+                ),
+                iconColor: AppColors.orange,
+              ),
+              const SizedBox(height: 28),
               Row(
                 children: [
                   Expanded(

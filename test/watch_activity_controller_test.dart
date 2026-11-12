@@ -136,6 +136,74 @@ void main() {
   });
 
   test(
+    'movie watch completes the film and counts time without counting an episode',
+    () async {
+      final movieId = TvShow.movieIdOffset + 1375666;
+      libraryRepository.entries[movieId] = LibraryEntry(
+        showId: movieId,
+        name: 'Inception',
+        summary: '',
+        genres: const [],
+        status: LibraryStatus.watchlist,
+        isMovie: true,
+        runtime: 148,
+        addedAt: now,
+        updatedAt: now,
+      );
+      shows.episodes = [
+        TvEpisode(
+          id: movieId,
+          name: 'Inception',
+          summary: '',
+          season: 1,
+          number: 1,
+          runtime: 148,
+        ),
+      ];
+      await library.load();
+      final activity = controller();
+      final result = await activity.markNextEpisode(
+        library.findByShowId(movieId)!,
+      );
+      expect(result.status, MarkNextEpisodeStatus.success);
+      expect(library.findByShowId(movieId)?.status, LibraryStatus.completed);
+      expect(activity.totalMovies, 1);
+      expect(activity.totalEpisodes, 0);
+      expect(activity.totalWatchMinutes, 148);
+      expect(activity.currentMonthSummary.movieCount, 1);
+      expect(activity.currentDailyStreak, 1);
+      expect(
+        activity.isAchievementUnlocked(AchievementCatalog.firstEpisode),
+        isFalse,
+      );
+      final again = await activity.markNextEpisode(
+        library.findByShowId(movieId)!,
+      );
+      expect(again.status, MarkNextEpisodeStatus.noAvailableEpisode);
+      expect(activity.totalMovies, 1);
+    },
+  );
+
+  test(
+    'a missing catalog pointer advances chronologically instead of restarting',
+    () async {
+      libraryRepository.entries[1] = _entry(
+        1,
+      ).copyWith(lastSeason: 2, lastEpisode: 5, lastEpisodeId: 999);
+      shows.episodes = const [
+        TvEpisode(id: 1, name: 'Start', summary: '', season: 1, number: 1),
+        TvEpisode(id: 206, name: 'Next', summary: '', season: 2, number: 6),
+      ];
+      await library.load();
+      final result = await controller().markNextEpisode(
+        library.findByShowId(1)!,
+      );
+      expect(result.episode?.id, 206);
+      expect(repository.logs.single.episodeId, 206);
+    },
+  );
+
+  test(
     'legacy getters and summary share canonical history without changing it',
     () async {
       final first = _log(1, '2026-11-01T10:00:00Z');

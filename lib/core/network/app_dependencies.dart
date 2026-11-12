@@ -14,6 +14,7 @@ import 'package:watchloom/features/library/data/repositories/sqlite_library_repo
 import 'package:watchloom/features/library/presentation/controllers/library_controller.dart';
 import 'package:watchloom/features/shows/data/datasources/tvmaze_remote_data_source.dart';
 import 'package:watchloom/features/shows/data/repositories/tvmaze_show_repository.dart';
+import 'package:watchloom/features/shows/data/repositories/media_catalog_repository.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
 import 'package:watchloom/features/account/presentation/auth_controller.dart';
 import 'package:watchloom/features/account/presentation/account_session_controller.dart';
@@ -52,12 +53,14 @@ class AppDependencies {
         receiveTimeout: const Duration(seconds: 15),
         headers: const {
           'Accept': 'application/json',
-          'User-Agent': 'Watchloom/1.2.0 Flutter iOS',
+          'User-Agent': 'Watchloom/1.0.5 Flutter iOS',
         },
       ),
     );
 
-    final showRepository = TvMazeShowRepository(TvMazeRemoteDataSource(dio));
+    final showRepository = MediaCatalogRepository(
+      TvMazeShowRepository(TvMazeRemoteDataSource(dio)),
+    );
 
     final watchloomDatabase = WatchloomDatabase();
     await watchloomDatabase.database;

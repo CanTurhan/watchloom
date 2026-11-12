@@ -1,11 +1,17 @@
 import 'package:watchloom/features/library/data/datasources/library_local_data_source.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 import 'package:watchloom/features/library/domain/repositories/library_repository.dart';
+import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
 
-class SqliteLibraryRepository implements LibraryRepository {
+class SqliteLibraryRepository
+    implements LibraryRepository, ProgressLibraryRepository {
   const SqliteLibraryRepository(this._localDataSource);
 
   final LibraryLocalDataSource _localDataSource;
+
+  @override
+  Future<void> saveProgress(LibraryEntry entry, List<TvEpisode> episodes) =>
+      _localDataSource.saveEntry(entry.toMap(), episodes: episodes);
 
   @override
   Future<List<LibraryEntry>> getEntries() async {

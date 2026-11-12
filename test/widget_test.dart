@@ -28,6 +28,9 @@ import 'package:watchloom/features/shows/domain/repositories/show_repository.dar
 import 'package:watchloom/features/premium/presentation/subscription_controller.dart';
 import 'package:watchloom/features/profile/presentation/profile_page.dart';
 import 'package:watchloom/features/settings/presentation/settings_page.dart';
+import 'package:watchloom/features/home/presentation/home_page.dart';
+import 'package:watchloom/features/library/presentation/pages/library_page.dart';
+import 'package:watchloom/features/activity/presentation/pages/my_month_page.dart';
 import 'helpers/fake_subscription_repository.dart';
 
 void main() {
@@ -88,6 +91,8 @@ void main() {
     LibraryController? libraryController,
     AdPrivacyController? adPrivacyController,
     Widget home = const PremiumPage(libraryLimitReached: true),
+    ShowRepository? showRepository,
+    ActivityRepository? activityRepository,
   }) async {
     final adPrivacy =
         adPrivacyController ??
@@ -95,9 +100,9 @@ void main() {
     addTearDown(adPrivacy.dispose);
     final repository = _FakeLibraryRepository();
     final library = libraryController ?? LibraryController(repository);
-    final shows = _FakeShowRepository();
+    final shows = showRepository ?? _FakeShowRepository();
     final activity = WatchActivityController(
-      repository: _FakeActivityRepository(repository),
+      repository: activityRepository ?? _FakeActivityRepository(repository),
       libraryController: library,
       showRepository: shows,
     );
@@ -126,6 +131,132 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+  }
+
+  for (final screen in ['home', 'library']) {
+    testWidgets('watch feedback auto-dismisses after two seconds on $screen', (
+      tester,
+    ) async {
+      SharedPreferences.setMockInitialValues({});
+      final store = FakeSubscriptionRepository();
+      final premium = SubscriptionController(store);
+      addTearDown(premium.dispose);
+      addTearDown(store.close);
+      final repository = _FakeLibraryRepository();
+      await repository.saveEntry(
+        LibraryEntry(
+          showId: 1,
+          name: 'Regression Series',
+          summary: '',
+          genres: const [],
+          status: LibraryStatus.watching,
+          addedAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+        ),
+      );
+      final library = LibraryController(repository);
+      await library.load();
+      await premiumHarness(
+        tester,
+        premium,
+        libraryController: library,
+        showRepository: _PlayableShows(),
+        activityRepository: _FakeActivityRepository(repository),
+        home: Scaffold(
+          body: screen == 'home' ? const HomePage() : const LibraryPage(),
+        ),
+      );
+      final button = find.text('Mark next episode watched');
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      expect(find.text('S01 · E01 recorded.'), findsOneWidget);
+      expect(tester.widget<SnackBar>(find.byType(SnackBar)).persist, isFalse);
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(find.text('S01 · E01 recorded.'), findsNothing);
+      expect(library.findByShowId(1)?.lastEpisode, 1);
+    });
+  }
+
+  testWidgets('movie library filters keep watched films and series separate', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    final store = FakeSubscriptionRepository();
+    final premium = SubscriptionController(store);
+    addTearDown(premium.dispose);
+    addTearDown(store.close);
+    final repository = _FakeLibraryRepository();
+    for (final movie in [false, true]) {
+      await repository.saveEntry(
+        LibraryEntry(
+          showId: movie ? TvShow.movieIdOffset + 1375666 : 169,
+          name: movie ? 'Movie title' : 'Series title',
+          summary: '',
+          genres: const [],
+          status: LibraryStatus.completed,
+          isMovie: movie,
+          isFavorite: movie,
+          addedAt: DateTime(2026),
+          updatedAt: DateTime(2026),
+        ),
+      );
+    }
+    final library = LibraryController(repository);
+    await library.load();
+    await premiumHarness(
+      tester,
+      premium,
+      libraryController: library,
+      home: const Scaffold(body: LibraryPage()),
+    );
+    await tester.tap(find.text('Movies'));
+    await tester.pumpAndSettle();
+    expect(find.text('Movie title'), findsOneWidget);
+    expect(find.text('Series title'), findsNothing);
+    await tester.tap(find.text('Favorites'));
+    await tester.pumpAndSettle();
+    expect(find.text('Movie title'), findsOneWidget);
+    await tester.tap(find.text('Series'));
+    await tester.pumpAndSettle();
+    expect(find.text('Movie title'), findsNothing);
+    expect(find.text('Series title'), findsNothing);
+    await tester.tap(find.text('Favorites'));
+    await tester.pumpAndSettle();
+    expect(find.text('Series title'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  for (final language in ['en', 'tr']) {
+    testWidgets(
+      'period controls fit a small screen at large text ($language)',
+      (tester) async {
+        SharedPreferences.setMockInitialValues({});
+        tester.view.physicalSize = const Size(320, 760);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.resetPhysicalSize);
+        addTearDown(tester.view.resetDevicePixelRatio);
+        final store = FakeSubscriptionRepository();
+        final premium = SubscriptionController(store);
+        addTearDown(premium.dispose);
+        addTearDown(store.close);
+        await premiumHarness(
+          tester,
+          premium,
+          locale: Locale(language),
+          textScale: 1.8,
+          home: const Scaffold(body: MyMonthPage()),
+        );
+        await tester.tap(find.text(language == 'tr' ? 'Yıllık' : 'Yearly'));
+        await tester.pumpAndSettle();
+        expect(
+          find.text(language == 'tr' ? 'Yılım' : 'My Year'),
+          findsOneWidget,
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
   }
 
   for (final language in ['en', 'tr']) {
@@ -565,6 +696,20 @@ class _FakeShowRepository implements ShowRepository {
   Future<List<TvShow>> searchShows(String query) async {
     return const [];
   }
+}
+
+class _PlayableShows extends _FakeShowRepository {
+  @override
+  Future<List<TvEpisode>> getEpisodes(int showId) async => const [
+    TvEpisode(
+      id: 11,
+      name: 'Pilot',
+      summary: '',
+      season: 1,
+      number: 1,
+      runtime: 45,
+    ),
+  ];
 }
 
 class _FakeLibraryRepository implements LibraryRepository {

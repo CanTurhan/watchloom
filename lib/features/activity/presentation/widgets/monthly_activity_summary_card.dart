@@ -71,8 +71,8 @@ class MonthlyActivitySummaryCard extends StatelessWidget {
               const SizedBox(height: 10),
               Text(
                 tr
-                    ? '${summary.unknownRuntimeCount} bölümün süresi bilinmediğinden toplama dahil edilmedi.'
-                    : '${summary.unknownRuntimeCount} episodes have no known runtime and are excluded from watch time.',
+                    ? '${summary.unknownRuntimeCount} kaydın süresi bilinmediğinden toplama dahil edilmedi.'
+                    : '${summary.unknownRuntimeCount} records have no known runtime and are excluded from watch time.',
                 key: const ValueKey('monthly-unknown-runtime'),
                 style: const TextStyle(
                   color: AppColors.accentSoft,
@@ -97,6 +97,13 @@ class MonthlyActivitySummaryCard extends StatelessWidget {
                   spacing: 10,
                   runSpacing: 18,
                   children: [
+                    if (summary.movieCount > 0)
+                      _Metric(
+                        width: width,
+                        value: summary.movieCount,
+                        label: tr ? 'İzlenen film' : 'Movies watched',
+                        icon: Icons.movie_outlined,
+                      ),
                     _Metric(
                       width: width,
                       value: summary.episodeCount,
@@ -122,8 +129,8 @@ class MonthlyActivitySummaryCard extends StatelessWidget {
             const SizedBox(height: 18),
             Text(
               tr
-                  ? 'Dizi sayısı, bu ay en az bir bölümünü izlediğin farklı dizileri gösterir. Aktif günler takvim günleridir; süre içindeki günler 24 saattir.'
-                  : 'Series are distinct titles with an episode watched this month. Active days are calendar days; days in the duration equal 24 hours.',
+                  ? 'Dizi sayısı, seçilen dönemde en az bir bölümünü izlediğin farklı dizileri gösterir. Aktif günler takvim günleridir; süre içindeki günler 24 saattir.'
+                  : 'Series are distinct titles with an episode watched in this period. Active days are calendar days; days in the duration equal 24 hours.',
               style: const TextStyle(
                 color: AppColors.textSecondary,
                 fontSize: 11,

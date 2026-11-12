@@ -8,10 +8,26 @@ import 'package:watchloom/core/widgets/app_page_header.dart';
 import 'package:watchloom/features/activity/domain/entities/episode_watch_log.dart';
 import 'package:watchloom/features/activity/presentation/widgets/monthly_activity_summary_card.dart';
 
-class MyMonthPage extends StatelessWidget {
+class MyMonthPage extends StatefulWidget {
   const MyMonthPage({this.onShare, this.isSharing = false, super.key});
   final VoidCallback? onShare;
   final bool isSharing;
+
+  @override
+  State<MyMonthPage> createState() => _MyMonthPageState();
+}
+
+class _MyMonthPageState extends State<MyMonthPage> {
+  int _period = 1;
+  DateTime _date = DateTime.now();
+
+  void _move(int delta) => setState(() {
+    _date = switch (_period) {
+      0 => DateTime(_date.year, _date.month, _date.day + delta),
+      2 => DateTime(_date.year + delta, 1),
+      _ => DateTime(_date.year, _date.month + delta),
+    };
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -23,8 +39,27 @@ class MyMonthPage extends StatelessWidget {
       child: ListenableBuilder(
         listenable: controller,
         builder: (context, child) {
-          final summary = controller.currentMonthSummary;
+          final start = switch (_period) {
+            0 => DateTime(_date.year, _date.month, _date.day),
+            2 => DateTime(_date.year),
+            _ => DateTime(_date.year, _date.month),
+          };
+          final end = switch (_period) {
+            0 => DateTime(start.year, start.month, start.day + 1),
+            2 => DateTime(start.year + 1),
+            _ => DateTime(start.year, start.month + 1),
+          };
+          final summary = controller.summaryForRange(start, end);
           final monthLogs = summary.logs;
+          final achievements = controller.unlockedAchievements.where((
+            achievement,
+          ) {
+            final local = achievement.unlockedAt.toLocal();
+            final date = DateTime(local.year, local.month, local.day);
+            return !date.isBefore(start) &&
+                date.isBefore(end) &&
+                !achievement.unlockedAt.isAfter(DateTime.now());
+          }).toList();
 
           return RefreshIndicator(
             onRefresh: controller.load,
@@ -33,13 +68,21 @@ class MyMonthPage extends StatelessWidget {
               padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
               children: [
                 AppPageHeader(
-                  title: strings.myMonth,
-                  action: onShare == null && !isSharing
+                  title: _period == 0
+                      ? strings.value(en: 'My Day', tr: 'Günüm')
+                      : _period == 2
+                      ? strings.value(en: 'My Year', tr: 'Yılım')
+                      : strings.myMonth,
+                  action:
+                      _period != 1 ||
+                          _date.year != DateTime.now().year ||
+                          _date.month != DateTime.now().month ||
+                          (widget.onShare == null && !widget.isSharing)
                       ? null
                       : IconButton.filledTonal(
                           tooltip: strings.shareMonthStory,
-                          onPressed: onShare,
-                          icon: isSharing
+                          onPressed: widget.onShare,
+                          icon: widget.isSharing
                               ? const SizedBox.square(
                                   dimension: 20,
                                   child: CircularProgressIndicator(
@@ -48,13 +91,60 @@ class MyMonthPage extends StatelessWidget {
                                 )
                               : const Icon(Icons.ios_share_rounded),
                         ),
-                  eyebrow:
-                      '${strings.monthName(summary.month)} ${summary.year}',
+                  eyebrow: _period == 2
+                      ? '${summary.year}'
+                      : _period == 0
+                      ? '${start.day} ${strings.monthName(start.month)} ${start.year}'
+                      : '${strings.monthName(summary.month)} ${summary.year}',
                   subtitle: strings.isTurkish
-                      ? 'Her bölüm, ayının bir parçası.'
-                      : 'Every episode is part of your story.',
+                      ? 'Dizi ve film izleme etkinliklerin.'
+                      : 'Your series and movie viewing activity.',
                 ),
                 const SizedBox(height: 24),
+                SegmentedButton<int>(
+                  segments: [
+                    ButtonSegment(
+                      value: 0,
+                      label: Text(strings.value(en: 'Daily', tr: 'Günlük')),
+                    ),
+                    ButtonSegment(
+                      value: 1,
+                      label: Text(strings.value(en: 'Monthly', tr: 'Aylık')),
+                    ),
+                    ButtonSegment(
+                      value: 2,
+                      label: Text(strings.value(en: 'Yearly', tr: 'Yıllık')),
+                    ),
+                  ],
+                  selected: {_period},
+                  onSelectionChanged: (values) =>
+                      setState(() => _period = values.single),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    IconButton(
+                      tooltip: strings.value(
+                        en: 'Previous period',
+                        tr: 'Önceki dönem',
+                      ),
+                      onPressed: () => _move(-1),
+                      icon: const Icon(Icons.chevron_left),
+                    ),
+                    TextButton(
+                      onPressed: () => setState(() => _date = DateTime.now()),
+                      child: Text(strings.value(en: 'Today', tr: 'Bugün')),
+                    ),
+                    IconButton(
+                      tooltip: strings.value(
+                        en: 'Next period',
+                        tr: 'Sonraki dönem',
+                      ),
+                      onPressed: () => _move(1),
+                      icon: const Icon(Icons.chevron_right),
+                    ),
+                  ],
+                ),
                 MonthlyActivitySummaryCard(summary: summary),
                 const SizedBox(height: 14),
                 Row(
@@ -89,20 +179,28 @@ class MyMonthPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 28),
                 Text(
-                  strings.achievementsThisMonthTitle,
+                  _period == 1
+                      ? strings.achievementsThisMonthTitle
+                      : strings.value(
+                          en: 'Achievements in this period',
+                          tr: 'Bu dönemdeki başarımlar',
+                        ),
                   style: const TextStyle(
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
                 const SizedBox(height: 12),
-                if (controller.achievementsUnlockedThisMonth.isEmpty)
+                if (achievements.isEmpty)
                   _EmptyCard(
                     icon: Icons.emoji_events_outlined,
-                    text: strings.noAchievementsThisMonth,
+                    text: strings.value(
+                      en: 'No achievements in this period.',
+                      tr: 'Bu dönemde açılan başarım yok.',
+                    ),
                   )
                 else
-                  ...controller.achievementsUnlockedThisMonth.map(
+                  ...achievements.map(
                     (achievement) => Padding(
                       padding: const EdgeInsets.only(bottom: 10),
                       child: _AchievementCard(
@@ -125,7 +223,10 @@ class MyMonthPage extends StatelessWidget {
                 if (monthLogs.isEmpty)
                   _EmptyCard(
                     icon: Icons.history_rounded,
-                    text: strings.noActivityMessage,
+                    text: strings.value(
+                      en: 'No viewing activity in this period.',
+                      tr: 'Bu dönemde izleme kaydı yok.',
+                    ),
                   )
                 else
                   ...monthLogs

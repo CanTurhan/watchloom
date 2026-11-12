@@ -1,4 +1,5 @@
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
+import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 
 enum WatchLogSource { manualWatch }
 
@@ -52,6 +53,7 @@ class EpisodeWatchLog {
   final int? previousEpisodeId;
 
   String get episodeCode {
+    if (showId >= TvShow.movieIdOffset) return '🎬';
     final seasonText = season.toString().padLeft(2, '0');
     final episodeText = episodeNumber.toString().padLeft(2, '0');
 

@@ -13,6 +13,7 @@ import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
 import 'package:watchloom/features/shows/presentation/show_search_page.dart';
 import 'package:watchloom/features/library/presentation/widgets/library_show_metadata.dart';
+import 'package:watchloom/features/library/presentation/library_share.dart';
 
 class LibraryPage extends StatefulWidget {
   const LibraryPage({super.key});
@@ -26,6 +27,7 @@ class LibraryPage extends StatefulWidget {
 class _LibraryPageState extends State<LibraryPage> {
   LibraryStatus? _selectedStatus;
   bool _favoritesOnly = false;
+  bool? _moviesOnly;
 
   @override
   Widget build(BuildContext context) {
@@ -47,6 +49,9 @@ class _LibraryPageState extends State<LibraryPage> {
             builder: (context, child) {
               final entries = libraryController.entries
                   .where((entry) {
+                    if (_moviesOnly != null && entry.isMovie != _moviesOnly) {
+                      return false;
+                    }
                     final selectedStatus = _selectedStatus;
 
                     if (_favoritesOnly && !entry.isFavorite) {
@@ -68,21 +73,90 @@ class _LibraryPageState extends State<LibraryPage> {
                       eyebrow: strings.isTurkish
                           ? 'KOLEKSİYONUN'
                           : 'YOUR COLLECTION',
-                      action: TextButton(
-                        onPressed: () => PremiumPage.open(context),
-                        child: Text(
-                          scope.premiumController.hasAccess
-                              ? '${libraryController.entries.length} · ∞'
-                              : '${libraryController.entries.length} / 5',
-                          semanticsLabel: scope.premiumController.hasAccess
-                              ? '${strings.premiumTitle}, ${libraryController.entries.length}'
-                              : '${strings.freeLibraryUsage(libraryController.entries.length)}. ${strings.seePremium}',
-                          style: const TextStyle(
-                            color: AppColors.accentSoft,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
+                      action: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          PopupMenuButton<bool>(
+                            tooltip: strings.value(en: 'Share', tr: 'Paylaş'),
+                            icon: const Icon(Icons.ios_share_rounded),
+                            onSelected: (wishlist) => shareLibrary(
+                              context,
+                              libraryController.entries.toList(),
+                              wishlist: wishlist,
+                            ),
+                            itemBuilder: (_) => [
+                              PopupMenuItem(
+                                value: false,
+                                child: Text(
+                                  strings.value(
+                                    en: 'Share library',
+                                    tr: 'Kütüphaneyi paylaş',
+                                  ),
+                                ),
+                              ),
+                              PopupMenuItem(
+                                value: true,
+                                child: Text(
+                                  strings.value(
+                                    en: 'Share watchlist',
+                                    tr: 'İzleme listesini paylaş',
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          TextButton(
+                            onPressed: () => PremiumPage.open(context),
+                            child: Text(
+                              scope.premiumController.hasAccess
+                                  ? '${libraryController.entries.length} · ∞'
+                                  : '${libraryController.entries.length} / 5',
+                              semanticsLabel: scope.premiumController.hasAccess
+                                  ? '${strings.premiumTitle}, ${libraryController.entries.length}'
+                                  : '${strings.freeLibraryUsage(libraryController.entries.length)}. ${strings.seePremium}',
+                              style: const TextStyle(
+                                color: AppColors.accentSoft,
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 4,
+                    ),
+                    child: SegmentedButton<int>(
+                      segments: [
+                        ButtonSegment(value: 0, label: Text(strings.all)),
+                        ButtonSegment(
+                          value: 1,
+                          label: Text(
+                            strings.value(en: 'Series', tr: 'Diziler'),
                           ),
                         ),
+                        ButtonSegment(
+                          value: 2,
+                          label: Text(
+                            strings.value(en: 'Movies', tr: 'Filmler'),
+                          ),
+                        ),
+                      ],
+                      selected: {
+                        _moviesOnly == null
+                            ? 0
+                            : _moviesOnly!
+                            ? 2
+                            : 1,
+                      },
+                      onSelectionChanged: (values) => setState(
+                        () => _moviesOnly = values.single == 0
+                            ? null
+                            : values.single == 2,
                       ),
                     ),
                   ),
@@ -243,7 +317,12 @@ class _LibraryPageState extends State<LibraryPage> {
                 statusText: strings.statusName(entry.status),
                 notStartedText: strings.notStarted,
                 removeText: strings.remove,
-                markText: strings.markNextEpisodeAction,
+                markText: entry.isMovie
+                    ? strings.value(
+                        en: 'Mark as watched',
+                        tr: 'İzlendi işaretle',
+                      )
+                    : strings.markNextEpisodeAction,
                 isProcessing: activityController.isProcessing(entry.showId),
                 onTap: () {
                   Navigator.of(context).push(
@@ -370,10 +449,12 @@ class _LibraryPageState extends State<LibraryPage> {
       case MarkNextEpisodeStatus.success:
         final episode = result.episode!;
 
-        message = strings.episodeLoggedMessage(
-          episode.season!,
-          episode.number!,
-        );
+        message = entry.isMovie
+            ? strings.value(
+                en: 'Movie marked as watched.',
+                tr: 'Film izlendi olarak kaydedildi.',
+              )
+            : strings.episodeLoggedMessage(episode.season!, episode.number!);
 
       case MarkNextEpisodeStatus.noAvailableEpisode:
         message = strings.noNextEpisodeMessage;
@@ -387,8 +468,11 @@ class _LibraryPageState extends State<LibraryPage> {
 
     final succeeded = result.status == MarkNextEpisodeStatus.success;
 
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        duration: const Duration(seconds: 2),
+        persist: false,
         content: Text(message),
         action: succeeded
             ? SnackBarAction(

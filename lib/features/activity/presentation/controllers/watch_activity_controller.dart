@@ -8,6 +8,7 @@ import 'package:watchloom/features/activity/domain/repositories/activity_reposit
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 import 'package:watchloom/features/library/presentation/controllers/library_controller.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
+import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
 
 enum MarkNextEpisodeStatus {
@@ -105,7 +106,25 @@ class WatchActivityController extends ChangeNotifier {
   int get totalEpisodes => WatchActivityHistory.fromLogs(
     episodeLogs: _logs,
     asOf: _now(),
-  ).episodeLogs.length;
+  ).episodeLogs.where((log) => log.showId < TvShow.movieIdOffset).length;
+
+  int get totalMovies => WatchActivityHistory.fromLogs(
+    episodeLogs: _logs,
+    asOf: _now(),
+  ).episodeLogs.where((log) => log.showId >= TvShow.movieIdOffset).length;
+
+  int get totalWatchMinutes =>
+      WatchActivityHistory.fromLogs(
+        episodeLogs: _logs,
+        asOf: _now(),
+      ).episodeLogs.fold(
+        0,
+        (sum, log) =>
+            sum +
+            (log.runtimeMinutes != null && log.runtimeMinutes! > 0
+                ? log.runtimeMinutes!
+                : 0),
+      );
 
   WatchActivitySummary get currentMonthSummary {
     final now = _now();
@@ -126,6 +145,16 @@ class WatchActivityController extends ChangeNotifier {
     asOf: _now(),
     toLocalDate: _toLocalDate,
   );
+
+  WatchActivitySummary summaryForRange(DateTime start, DateTime end) =>
+      WatchActivitySummary.fromLogs(
+        episodeLogs: _logs,
+        month: start,
+        asOf: _now(),
+        toLocalDate: _toLocalDate,
+        rangeStart: start,
+        rangeEnd: end,
+      );
 
   bool get canUndoLatest {
     if (_logs.isEmpty || _isUndoing) {
@@ -238,7 +267,9 @@ class WatchActivityController extends ChangeNotifier {
       final now = _now();
 
       final updatedEntry = entry.copyWith(
-        status: entry.status == LibraryStatus.watchlist
+        status: entry.isMovie
+            ? LibraryStatus.completed
+            : entry.status == LibraryStatus.watchlist
             ? LibraryStatus.watching
             : entry.status,
         lastSeason: nextEpisode.season,
@@ -257,7 +288,9 @@ class WatchActivityController extends ChangeNotifier {
           runtimeMinutes:
               nextEpisode.runtime != null && nextEpisode.runtime! > 0
               ? nextEpisode.runtime
-              : null,
+              : (entry.runtime != null && entry.runtime! > 0
+                    ? entry.runtime
+                    : null),
           watchedAt: now,
           source: WatchLogSource.manualWatch,
           previousStatus: entry.status,
@@ -380,7 +413,16 @@ class WatchActivityController extends ChangeNotifier {
     }
 
     if (currentIndex < 0) {
-      return episodes.first;
+      // Catalog corrections may remove an old episode ID. Never restart a
+      // tracked series from episode one when its saved pointer disappears.
+      for (final episode in episodes) {
+        if (episode.season! > entry.lastSeason! ||
+            (episode.season == entry.lastSeason &&
+                episode.number! > entry.lastEpisode!)) {
+          return episode;
+        }
+      }
+      return null;
     }
 
     final nextIndex = currentIndex + 1;
@@ -413,7 +455,7 @@ class WatchActivityController extends ChangeNotifier {
     final total = WatchActivityHistory.fromLogs(
       episodeLogs: _logs,
       asOf: now,
-    ).episodeLogs.length;
+    ).episodeLogs.where((log) => log.showId < TvShow.movieIdOffset).length;
     final currentStreaks = WatchStreaks.fromLogs(
       episodeLogs: _logs,
       asOf: now,

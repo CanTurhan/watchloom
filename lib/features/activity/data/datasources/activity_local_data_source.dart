@@ -178,7 +178,9 @@ class ActivityLocalDataSource {
           entry['last_episode'] == latest['episode_number'] &&
           (entry['last_episode_id'] == null ||
               entry['last_episode_id'] == latest['episode_id']);
-      final statusAfterRecord = latest['previous_status'] == 'watchlist'
+      final statusAfterRecord = (showId is int && showId >= 1000000000000)
+          ? 'completed'
+          : latest['previous_status'] == 'watchlist'
           ? 'watching'
           : latest['previous_status'];
       // Undo removes the watch event. Restore progress only while it still

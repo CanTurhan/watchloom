@@ -31,7 +31,7 @@ class WatchloomDatabase {
 
     final openedDatabase = await openDatabase(
       databasePath,
-      version: 5,
+      version: 6,
       onConfigure: (database) async {
         await database.execute('PRAGMA foreign_keys = ON');
       },
@@ -53,6 +53,20 @@ class WatchloomDatabase {
           await _ensureLibraryPersonalColumns(database);
         }
         if (oldVersion < 5) await _createBackupMetadata(database);
+        if (oldVersion < 6) {
+          await database.execute(
+            "ALTER TABLE library_entries ADD COLUMN media_type TEXT NOT NULL DEFAULT 'series'",
+          );
+          await database.execute(
+            'ALTER TABLE library_entries ADD COLUMN runtime_minutes INTEGER',
+          );
+          await database.execute(
+            'ALTER TABLE library_entries ADD COLUMN trailer_url TEXT',
+          );
+          await database.execute(
+            'ALTER TABLE library_entries ADD COLUMN content_rating TEXT',
+          );
+        }
       },
     );
 
@@ -73,6 +87,10 @@ class WatchloomDatabase {
     await database.execute('''
       CREATE TABLE IF NOT EXISTS library_entries (
         show_id INTEGER PRIMARY KEY,
+        media_type TEXT NOT NULL DEFAULT 'series',
+        runtime_minutes INTEGER,
+        trailer_url TEXT,
+        content_rating TEXT,
         name TEXT NOT NULL,
         summary TEXT NOT NULL DEFAULT '',
         genres_json TEXT NOT NULL DEFAULT '[]',

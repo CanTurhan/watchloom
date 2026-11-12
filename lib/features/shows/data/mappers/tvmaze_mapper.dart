@@ -11,6 +11,7 @@ abstract final class TvMazeMapper {
 
     return TvShow(
       id: _asInt(json['id']),
+      imdbId: _nullableString(_asMap(json['externals'])?['imdb']),
       name: _asString(json['name'], fallback: 'Unknown Show'),
       summary: cleanHtml(json['summary']),
       genres: _asStringList(json['genres']),
@@ -18,7 +19,7 @@ abstract final class TvMazeMapper {
       language: _nullableString(json['language']),
       premiered: _nullableString(json['premiered']),
       ended: _nullableString(json['ended']),
-      runtime: _nullableInt(json['runtime']),
+      runtime: _nullableInt(json['runtime'] ?? json['averageRuntime']),
       ratingAverage: _nullableDouble(rating?['average']),
       imageMedium: _nullableString(image?['medium']),
       imageOriginal: _nullableString(image?['original']),

@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:watchloom/core/database/watchloom_database.dart';
 import 'package:watchloom/features/activity/data/datasources/activity_local_data_source.dart';
+import 'package:watchloom/features/library/data/datasources/library_local_data_source.dart';
+import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
 
 // A transactional database double exercises the data-source contract without
 // requiring an iOS plugin. Native SQLite integration remains a device check.
@@ -91,6 +93,14 @@ class _MemoryDatabase implements Database, Transaction {
   }
 
   @override
+  Future<List<Map<String, Object?>>> rawQuery(
+    String sql, [
+    List<Object?>? arguments,
+  ]) async => [
+    {'COUNT(*)': entries.length},
+  ];
+
+  @override
   Future<int> insert(
     String table,
     Map<String, Object?> values, {
@@ -98,12 +108,17 @@ class _MemoryDatabase implements Database, Transaction {
     ConflictAlgorithm? conflictAlgorithm,
   }) async {
     expect(_insideTransaction, isTrue);
+    if (table == 'library_entries') {
+      entries[values['show_id'] as int] = Map.of(values);
+      return values['show_id'] as int;
+    }
     expect(table, 'episode_watch_logs');
     if (logs.any(
       (row) =>
           row['show_id'] == values['show_id'] &&
           row['episode_id'] == values['episode_id'],
     )) {
+      if (conflictAlgorithm == ConflictAlgorithm.ignore) return 0;
       throw StateError('duplicate episode');
     }
     final id = _nextId++;
@@ -140,9 +155,17 @@ class _MemoryDatabase implements Database, Transaction {
   }) async {
     expect(_insideTransaction, isTrue);
     expect(table, 'episode_watch_logs');
-    expect(where, 'id = ?');
     final before = logs.length;
-    logs.removeWhere((row) => row['id'] == whereArgs!.single);
+    if (where == 'show_id = ? AND episode_id = ?') {
+      logs.removeWhere(
+        (row) =>
+            row['show_id'] == whereArgs![0] &&
+            row['episode_id'] == whereArgs[1],
+      );
+    } else {
+      expect(where, 'id = ?');
+      logs.removeWhere((row) => row['id'] == whereArgs!.single);
+    }
     return before - logs.length;
   }
 
@@ -202,6 +225,83 @@ void main() {
     store.memory.entries[1] = _entry();
     source = ActivityLocalDataSource(store);
     addTearDown(store.changes.dispose);
+  });
+
+  final episodes = List.generate(
+    4,
+    (i) => TvEpisode(
+      id: 11 + i,
+      name: 'Episode ${i + 1}',
+      summary: '',
+      season: 1,
+      number: i + 1,
+      runtime: 45,
+    ),
+  );
+
+  test(
+    'library edit records every new episode once and rewind corrects totals',
+    () async {
+      final library = LibraryLocalDataSource(store);
+      await library.saveEntry(_progress(episode: 3), episodes: episodes);
+      expect(store.memory.logs.map((r) => r['episode_id']), [11, 12, 13]);
+      expect(
+        store.memory.logs.fold<int>(
+          0,
+          (sum, row) => sum + (row['runtime_minutes'] as int),
+        ),
+        135,
+      );
+      await library.saveEntry(_progress(episode: 3), episodes: episodes);
+      expect(store.memory.logs.length, 3);
+      await library.saveEntry(_progress(), episodes: episodes);
+      expect(store.memory.logs.map((r) => r['episode_id']), [11]);
+      expect(store.memory.entries[1]?['last_episode_id'], 11);
+      await library.saveEntry(_progress(episode: 2), episodes: episodes);
+      expect(store.memory.logs.map((r) => r['episode_id']), [11, 12]);
+      expect(store.memory.logs.last['previous_episode_id'], 11);
+    },
+  );
+
+  test(
+    'future episode in bulk edit rolls back history and progress together',
+    () async {
+      final library = LibraryLocalDataSource(store);
+      await expectLater(
+        library.saveEntry(
+          _progress(episode: 2),
+          episodes: [
+            episodes.first,
+            const TvEpisode(
+              id: 12,
+              name: 'Future',
+              summary: '',
+              season: 1,
+              number: 2,
+              airDate: '2099-01-01',
+            ),
+          ],
+        ),
+        throwsStateError,
+      );
+      expect(store.memory.logs, isEmpty);
+      expect(store.memory.entries[1]?['last_episode_id'], isNull);
+      expect(store.changes.value, 0);
+    },
+  );
+
+  test('metadata-only save preserves event dates and event count', () async {
+    final library = LibraryLocalDataSource(store);
+    await library.saveEntry(_progress(), episodes: episodes);
+    final originalDate = store.memory.logs.single['watched_at'];
+    await library.saveEntry({
+      ..._progress(),
+      'personal_note': 'New private note',
+      'updated_at': '2026-11-20T10:00:00Z',
+    }, episodes: episodes);
+    expect(store.memory.logs.length, 1);
+    expect(store.memory.logs.single['watched_at'], originalDate);
+    expect(store.memory.entries[1]?['personal_note'], 'New private note');
   });
 
   test(

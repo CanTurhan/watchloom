@@ -1,4 +1,5 @@
 import 'package:watchloom/features/activity/domain/entities/episode_watch_log.dart';
+import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 
 /// Converts an instant to the calendar date used by the viewer.
 /// Production uses the device's local timezone; tests can supply a timezone.
@@ -105,6 +106,8 @@ class WatchActivitySummary {
     required DateTime month,
     DateTime? asOf,
     WatchDateConverter? toLocalDate,
+    DateTime? rangeStart,
+    DateTime? rangeEnd,
   }) {
     final localDate = toLocalDate ?? _deviceLocalDate;
     final history = WatchActivityHistory.fromLogs(
@@ -113,6 +116,10 @@ class WatchActivitySummary {
     );
     bool inMonth(DateTime instant) {
       final date = localDate(instant);
+      if (rangeStart != null && rangeEnd != null) {
+        final civil = DateTime(date.year, date.month, date.day);
+        return !civil.isBefore(rangeStart) && civil.isBefore(rangeEnd);
+      }
       // The argument selects a year/month, rather than representing an instant.
       return date.year == month.year && date.month == month.month;
     }
@@ -135,7 +142,11 @@ class WatchActivitySummary {
       year: month.year,
       month: month.month,
       logs: List.unmodifiable(selectedEpisodes),
-      seriesCount: selectedEpisodes.map((log) => log.showId).toSet().length,
+      seriesCount: selectedEpisodes
+          .where((log) => log.showId < TvShow.movieIdOffset)
+          .map((log) => log.showId)
+          .toSet()
+          .length,
       knownWatchMinutes: knownMinutes(
         selectedEpisodes.map((log) => log.runtimeMinutes),
       ),
@@ -153,7 +164,10 @@ class WatchActivitySummary {
   final int month;
   final List<EpisodeWatchLog> logs;
 
-  int get episodeCount => logs.length;
+  int get episodeCount =>
+      logs.where((log) => log.showId < TvShow.movieIdOffset).length;
+  int get movieCount =>
+      logs.where((log) => log.showId >= TvShow.movieIdOffset).length;
 
   /// Distinct series with an actual episode event, not completed series.
   final int seriesCount;

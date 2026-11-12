@@ -205,7 +205,11 @@ class _HomePageState extends State<HomePage> {
                   .toList(growable: false);
 
               final watchlistEntries = libraryEntries
-                  .where((entry) => entry.status == LibraryStatus.watchlist)
+                  .where(
+                    (entry) =>
+                        entry.status == LibraryStatus.watchlist ||
+                        entry.status == LibraryStatus.watching,
+                  )
                   .take(8)
                   .toList(growable: false);
 
@@ -360,10 +364,12 @@ class _HomePageState extends State<HomePage> {
       case MarkNextEpisodeStatus.success:
         final episode = result.episode!;
 
-        message = strings.episodeLoggedMessage(
-          episode.season!,
-          episode.number!,
-        );
+        message = entry.isMovie
+            ? strings.value(
+                en: 'Movie marked as watched',
+                tr: 'Film izlendi olarak kaydedildi',
+              )
+            : strings.episodeLoggedMessage(episode.season!, episode.number!);
 
       case MarkNextEpisodeStatus.noAvailableEpisode:
         message = strings.noNextEpisodeMessage;
@@ -377,8 +383,11 @@ class _HomePageState extends State<HomePage> {
 
     final succeeded = result.status == MarkNextEpisodeStatus.success;
 
+    ScaffoldMessenger.of(context).clearSnackBars();
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
+        duration: const Duration(seconds: 2),
+        persist: false,
         content: Text(message),
         action: succeeded
             ? SnackBarAction(
@@ -841,7 +850,12 @@ class _ContinueWatchingCard extends StatelessWidget {
                                 )
                               : const Icon(Icons.check_rounded),
                           label: Text(
-                            strings.markNextEpisodeAction,
+                            entry.isMovie
+                                ? strings.value(
+                                    en: 'Mark as watched',
+                                    tr: 'İzlendi işaretle',
+                                  )
+                                : strings.markNextEpisodeAction,
                             textAlign: TextAlign.center,
                           ),
                         ),

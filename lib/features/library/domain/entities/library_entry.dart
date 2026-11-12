@@ -35,9 +35,17 @@ class LibraryEntry {
     this.lastEpisodeId,
     this.isFavorite = false,
     this.personalNote = '',
+    this.isMovie = false,
+    this.runtime,
+    this.trailerUrl,
+    this.contentRating,
   });
 
   final int showId;
+  final bool isMovie;
+  final int? runtime;
+  final String? trailerUrl;
+  final String? contentRating;
   final String name;
   final String summary;
   final List<String> genres;
@@ -69,6 +77,7 @@ class LibraryEntry {
   }
 
   String get progressCode {
+    if (isMovie) return '';
     if (!hasProgress) {
       return '';
     }
@@ -91,6 +100,10 @@ class LibraryEntry {
   }) {
     return LibraryEntry(
       showId: showId,
+      isMovie: isMovie,
+      runtime: runtime,
+      trailerUrl: trailerUrl,
+      contentRating: contentRating,
       name: name,
       summary: summary,
       genres: genres,
@@ -114,6 +127,10 @@ class LibraryEntry {
   TvShow toTvShow() {
     return TvShow(
       id: showId,
+      isMovie: isMovie,
+      runtime: runtime,
+      trailerUrl: trailerUrl,
+      contentRating: contentRating,
       name: name,
       summary: summary,
       genres: genres,
@@ -129,6 +146,10 @@ class LibraryEntry {
   Map<String, Object?> toMap() {
     return {
       'show_id': showId,
+      'media_type': isMovie ? 'movie' : 'series',
+      'runtime_minutes': runtime,
+      'trailer_url': trailerUrl,
+      'content_rating': contentRating,
       'name': name,
       'summary': summary,
       'genres_json': jsonEncode(genres),
@@ -158,6 +179,10 @@ class LibraryEntry {
 
     return LibraryEntry(
       showId: map['show_id'] as int,
+      isMovie: map['media_type'] == 'movie',
+      runtime: map['runtime_minutes'] as int?,
+      trailerUrl: map['trailer_url'] as String?,
+      contentRating: map['content_rating'] as String?,
       name: map['name'] as String,
       summary: map['summary'] as String? ?? '',
       genres: decodedGenres is List

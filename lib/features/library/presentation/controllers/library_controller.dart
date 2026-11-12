@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
 import 'package:watchloom/features/library/domain/library_access_policy.dart';
 import 'package:watchloom/features/library/domain/repositories/library_repository.dart';
+import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
 
 class LibraryController extends ChangeNotifier {
   LibraryController(
@@ -82,6 +83,24 @@ class LibraryController extends ChangeNotifier {
       await load();
     });
   }
+
+  Future<void> saveProgress(LibraryEntry entry, List<TvEpisode> episodes) =>
+      _mutate(() async {
+        final repository = _repository;
+        if (repository is! ProgressLibraryRepository) {
+          throw StateError('progress-repository-unavailable');
+        }
+        final current = await _repository.getEntries();
+        accessPolicy.checkSave(
+          alreadySaved: current.any((value) => value.showId == entry.showId),
+          entryCount: current.length,
+        );
+        await (repository as ProgressLibraryRepository).saveProgress(
+          entry,
+          episodes,
+        );
+        await load();
+      });
 
   Future<void> toggleFavorite(int showId) async {
     final entry = findByShowId(showId);

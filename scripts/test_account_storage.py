@@ -33,6 +33,22 @@ def save_show(db, show_id, note='Private note'):
 
 
 class StorageTests(unittest.TestCase):
+    def test_v5_media_upgrade_preserves_legacy_data_and_backup_triggers(self):
+        db = sqlite3.connect(':memory:')
+        # Reconstruct the actual pre-upgrade table by removing only v6 fields.
+        library_sql = next(sql for sql in SQL if 'CREATE TABLE IF NOT EXISTS library_entries' in sql)
+        for column in ['media_type', 'runtime_minutes', 'trailer_url', 'content_rating']:
+            library_sql = re.sub(r'^\s*' + column + r'[^\n]*\n', '', library_sql, flags=re.M)
+        db.execute(library_sql)
+        save_show(db, 42, 'Özel not 🎬')
+        migrations = re.findall(r"database\.execute\(\s*['\"](ALTER TABLE library_entries ADD COLUMN [^\n]+?)['\"],?\s*\)", SOURCE)
+        self.assertEqual(len(migrations), 4)
+        for migration in migrations:
+            db.execute(migration)
+        self.assertEqual(db.execute('SELECT show_id,personal_note,is_favorite,media_type FROM library_entries').fetchone(), (42, 'Özel not 🎬', 1, 'series'))
+        db.execute("INSERT INTO library_entries(show_id,name,status,added_at,updated_at,media_type,runtime_minutes) VALUES(1000001375666,'Inception','completed','2026-11-12','2026-11-12','movie',148)")
+        self.assertEqual(db.execute('SELECT COUNT(*) FROM library_entries').fetchone()[0], 2)
+
     def test_v4_upgrade_preserves_legacy_library_and_notes(self):
         db = sqlite3.connect(':memory:')
         schema(db, backup=False)

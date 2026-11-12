@@ -18,9 +18,41 @@ class TvShow {
     this.tvMazeUrl,
     this.nextEpisode,
     this.previousEpisode,
+    this.isMovie = false,
+    this.trailerUrl,
+    this.contentRating,
+    this.imdbId,
   });
 
   final int id;
+  static const movieIdOffset = 1000000000000;
+  final bool isMovie;
+  final String? trailerUrl;
+  final String? contentRating;
+  final String? imdbId;
+
+  TvShow withTrailer(String? trailer, String? rating) => TvShow(
+    id: id,
+    name: name,
+    summary: summary,
+    genres: genres,
+    status: status,
+    language: language,
+    premiered: premiered,
+    ended: ended,
+    runtime: runtime,
+    ratingAverage: ratingAverage,
+    imageMedium: imageMedium,
+    imageOriginal: imageOriginal,
+    channelName: channelName,
+    tvMazeUrl: tvMazeUrl,
+    nextEpisode: nextEpisode,
+    previousEpisode: previousEpisode,
+    isMovie: isMovie,
+    imdbId: imdbId,
+    trailerUrl: trailer,
+    contentRating: rating,
+  );
   final String name;
   final String summary;
   final List<String> genres;

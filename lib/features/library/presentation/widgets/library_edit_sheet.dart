@@ -93,10 +93,12 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
       }
 
       setState(() {
-        _episodes = episodes;
+        _episodes = episodes
+            .where((e) => e.id > 0 && e.season != null && e.number != null)
+            .toList();
         _isLoadingEpisodes = false;
 
-        if (_hasProgress && episodes.isNotEmpty) {
+        if (_hasProgress && _episodes.isNotEmpty) {
           final seasons = _availableSeasons;
 
           if (!seasons.contains(_selectedSeason)) {
@@ -110,7 +112,12 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
           );
 
           if (!episodeExists && seasonEpisodes.isNotEmpty) {
-            _selectedEpisodeId = seasonEpisodes.first.id;
+            final matching = seasonEpisodes.where(
+              (e) => e.number == _existingEntry?.lastEpisode,
+            );
+            _selectedEpisodeId = matching.isNotEmpty
+                ? matching.first.id
+                : seasonEpisodes.first.id;
           }
         }
       });
@@ -208,15 +215,25 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
     });
 
     final now = DateTime.now();
-    final selectedEpisode = _hasProgress ? _selectedEpisode : null;
+    final selectedEpisode = widget.show.isMovie
+        ? (_status == LibraryStatus.completed && _episodes.isNotEmpty
+              ? _episodes.first
+              : null)
+        : (_hasProgress ? _selectedEpisode : null);
     final existingEntry = _existingEntry;
 
     final entry = LibraryEntry(
       showId: widget.show.id,
+      isMovie: widget.show.isMovie,
+      runtime: widget.show.runtime,
+      trailerUrl: widget.show.trailerUrl,
+      contentRating: widget.show.contentRating,
       name: widget.show.name,
       summary: widget.show.summary,
       genres: widget.show.genres,
-      status: _status,
+      status: selectedEpisode != null && _status == LibraryStatus.watchlist
+          ? LibraryStatus.watching
+          : _status,
       imageMedium: widget.show.imageMedium,
       imageOriginal: widget.show.imageOriginal,
       ratingAverage: widget.show.ratingAverage,
@@ -233,7 +250,16 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
     );
 
     try {
-      await AppScope.of(context).libraryController.saveEntry(entry);
+      final scope = AppScope.of(context);
+      // A failed episode request must never erase existing progress.
+      if (_isLoadingEpisodes || _episodeError != null) {
+        throw StateError('episodes-not-ready');
+      }
+      if (!widget.show.isMovie && _hasProgress && selectedEpisode == null) {
+        throw StateError('selected-episode-unavailable');
+      }
+      await scope.libraryController.saveProgress(entry, _episodes);
+      await scope.activityController.load();
 
       if (!mounted) {
         return;
@@ -339,128 +365,133 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
               ),
             ),
             const SizedBox(height: 24),
-            Text(
-              strings.progress,
-              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
-            ),
-            const SizedBox(height: 10),
-            if (_isLoadingEpisodes)
-              Container(
-                padding: const EdgeInsets.all(18),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    const SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(strings.loadingEpisodes),
-                  ],
-                ),
-              )
-            else if (_episodeError != null)
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: Row(
-                  children: [
-                    Expanded(child: Text(strings.couldNotLoadEpisodes)),
-                    TextButton(
-                      onPressed: _loadEpisodes,
-                      child: Text(strings.retry),
-                    ),
-                  ],
-                ),
-              )
-            else if (_episodes.isEmpty)
+            if (!widget.show.isMovie) ...[
               Text(
-                strings.noEpisodes,
-                style: const TextStyle(color: AppColors.textSecondary),
-              )
-            else ...[
-              Container(
-                decoration: BoxDecoration(
-                  color: AppColors.surface,
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                child: SwitchListTile(
-                  value: _hasProgress,
-                  title: Text(strings.trackProgress),
-                  onChanged: _toggleProgress,
+                strings.progress,
+                style: const TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
-              if (_hasProgress) ...[
-                const SizedBox(height: 12),
-                Row(
-                  children: [
-                    Expanded(
-                      child: _DropdownContainer(
-                        label: strings.season,
-                        child: DropdownButton<int>(
-                          value: _selectedSeason,
-                          isExpanded: true,
-                          items: _availableSeasons
-                              .map((season) {
-                                return DropdownMenuItem(
-                                  value: season,
-                                  child: Text('${strings.season} $season'),
-                                );
-                              })
-                              .toList(growable: false),
-                          onChanged: (season) {
-                            if (season == null) {
-                              return;
-                            }
-
-                            setState(() {
-                              _selectedSeason = season;
-
-                              final episodes = _episodesForSelectedSeason;
-
-                              _selectedEpisodeId = episodes.isEmpty
-                                  ? null
-                                  : episodes.first.id;
-                            });
-                          },
-                        ),
+              const SizedBox(height: 10),
+              if (_isLoadingEpisodes)
+                Container(
+                  padding: const EdgeInsets.all(18),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      const SizedBox(
+                        width: 22,
+                        height: 22,
+                        child: CircularProgressIndicator(strokeWidth: 2),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: _DropdownContainer(
-                        label: strings.episode,
-                        child: DropdownButton<int>(
-                          value: _selectedEpisodeId,
-                          isExpanded: true,
-                          items: _episodesForSelectedSeason
-                              .map((episode) {
-                                return DropdownMenuItem(
-                                  value: episode.id,
-                                  child: Text(
-                                    '${strings.episode} '
-                                    '${episode.number ?? '-'}',
-                                  ),
-                                );
-                              })
-                              .toList(growable: false),
-                          onChanged: (episodeId) {
-                            setState(() {
-                              _selectedEpisodeId = episodeId;
-                            });
-                          },
-                        ),
+                      const SizedBox(width: 12),
+                      Text(strings.loadingEpisodes),
+                    ],
+                  ),
+                )
+              else if (_episodeError != null)
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: Row(
+                    children: [
+                      Expanded(child: Text(strings.couldNotLoadEpisodes)),
+                      TextButton(
+                        onPressed: _loadEpisodes,
+                        child: Text(strings.retry),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
+                )
+              else if (_episodes.isEmpty)
+                Text(
+                  strings.noEpisodes,
+                  style: const TextStyle(color: AppColors.textSecondary),
+                )
+              else ...[
+                Container(
+                  decoration: BoxDecoration(
+                    color: AppColors.surface,
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: SwitchListTile(
+                    value: _hasProgress,
+                    title: Text(strings.trackProgress),
+                    onChanged: _toggleProgress,
+                  ),
                 ),
+                if (_hasProgress) ...[
+                  const SizedBox(height: 12),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _DropdownContainer(
+                          label: strings.season,
+                          child: DropdownButton<int>(
+                            value: _selectedSeason,
+                            isExpanded: true,
+                            items: _availableSeasons
+                                .map((season) {
+                                  return DropdownMenuItem(
+                                    value: season,
+                                    child: Text('${strings.season} $season'),
+                                  );
+                                })
+                                .toList(growable: false),
+                            onChanged: (season) {
+                              if (season == null) {
+                                return;
+                              }
+
+                              setState(() {
+                                _selectedSeason = season;
+
+                                final episodes = _episodesForSelectedSeason;
+
+                                _selectedEpisodeId = episodes.isEmpty
+                                    ? null
+                                    : episodes.first.id;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: _DropdownContainer(
+                          label: strings.episode,
+                          child: DropdownButton<int>(
+                            value: _selectedEpisodeId,
+                            isExpanded: true,
+                            items: _episodesForSelectedSeason
+                                .map((episode) {
+                                  return DropdownMenuItem(
+                                    value: episode.id,
+                                    child: Text(
+                                      '${strings.episode} '
+                                      '${episode.number ?? '-'}',
+                                    ),
+                                  );
+                                })
+                                .toList(growable: false),
+                            onChanged: (episodeId) {
+                              setState(() {
+                                _selectedEpisodeId = episodeId;
+                              });
+                            },
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ],
             const SizedBox(height: 30),
@@ -468,7 +499,10 @@ class _LibraryEditSheetState extends State<LibraryEditSheet> {
               width: double.infinity,
               height: 52,
               child: FilledButton(
-                onPressed: _isSaving ? null : _save,
+                onPressed:
+                    _isSaving || _isLoadingEpisodes || _episodeError != null
+                    ? null
+                    : _save,
                 child: _isSaving
                     ? const SizedBox(
                         width: 22,
