@@ -53,7 +53,7 @@ class AppDependencies {
         receiveTimeout: const Duration(seconds: 15),
         headers: const {
           'Accept': 'application/json',
-          'User-Agent': 'Watchloom/1.0.5 Flutter iOS',
+          'User-Agent': 'Watchloom/1.2.1 Flutter iOS',
         },
       ),
     );
