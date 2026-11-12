@@ -7,6 +7,7 @@ import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/localization/app_monetization_strings.dart';
 import 'package:watchloom/features/premium/presentation/premium_page.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/core/widgets/movie_artwork.dart';
 import 'package:watchloom/core/widgets/app_page_header.dart';
 import 'package:watchloom/features/activity/presentation/controllers/watch_activity_controller.dart';
 import 'package:watchloom/features/library/domain/entities/library_entry.dart';
@@ -610,7 +611,12 @@ class _LibraryCard extends StatelessWidget {
                     top: 0,
                     bottom: 0,
                     width: 96,
-                    child: _Poster(url: entry.imageMedium),
+                    child: entry.isMovie
+                        ? MovieArtwork(
+                            movieId: entry.showId,
+                            imageUrl: entry.imageMedium,
+                          )
+                        : _Poster(url: entry.imageMedium),
                   ),
                   Padding(
                     padding: const EdgeInsets.only(left: 96),

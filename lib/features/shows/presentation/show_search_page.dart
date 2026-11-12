@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:watchloom/core/localization/app_show_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/core/widgets/movie_artwork.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
 import 'package:watchloom/features/shows/presentation/show_detail_page.dart';
@@ -300,7 +301,12 @@ class _ShowResultCard extends StatelessWidget {
                   child: SizedBox(
                     width: 96,
                     height: double.infinity,
-                    child: _PosterImage(imageUrl: show.imageMedium),
+                    child: show.isMovie
+                        ? MovieArtwork(
+                            movieId: show.id,
+                            imageUrl: show.imageMedium,
+                          )
+                        : _PosterImage(imageUrl: show.imageMedium),
                   ),
                 ),
               ),

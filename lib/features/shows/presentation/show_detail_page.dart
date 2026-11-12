@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:watchloom/core/localization/app_show_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/core/widgets/movie_artwork.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_episode.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/shows/domain/repositories/show_repository.dart';
@@ -85,9 +86,15 @@ class _ShowDetailPageState extends State<ShowDetailPage> {
             flexibleSpace: FlexibleSpaceBar(
               background: Hero(
                 tag: 'show-${_show.id}',
-                child: _BackdropImage(
-                  imageUrl: _show.imageOriginal ?? _show.imageMedium,
-                ),
+                child: _show.isMovie
+                    ? MovieArtwork(
+                        movieId: _show.id,
+                        imageUrl: _show.imageOriginal ?? _show.imageMedium,
+                        shade: true,
+                      )
+                    : _BackdropImage(
+                        imageUrl: _show.imageOriginal ?? _show.imageMedium,
+                      ),
               ),
             ),
           ),

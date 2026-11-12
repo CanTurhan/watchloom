@@ -6,6 +6,7 @@ import 'package:watchloom/core/localization/app_activity_strings.dart';
 import 'package:watchloom/core/localization/app_library_strings.dart';
 import 'package:watchloom/core/localization/app_strings.dart';
 import 'package:watchloom/core/theme/app_colors.dart';
+import 'package:watchloom/core/widgets/movie_artwork.dart';
 import 'package:watchloom/core/widgets/app_page_header.dart';
 import 'package:watchloom/core/localization/app_show_strings.dart';
 import 'package:watchloom/features/activity/domain/entities/episode_watch_log.dart';
@@ -585,7 +586,12 @@ class _UpcomingEpisodeCard extends StatelessWidget {
                 height: 72,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(12),
-                  child: _PosterImage(url: item.entry.imageMedium),
+                  child: item.entry.isMovie
+                      ? MovieArtwork(
+                          movieId: item.entry.showId,
+                          imageUrl: item.entry.imageMedium,
+                        )
+                      : _PosterImage(url: item.entry.imageMedium),
                 ),
               ),
               const SizedBox(width: 13),
@@ -769,9 +775,14 @@ class _ContinueWatchingCard extends StatelessWidget {
         child: Stack(
           children: [
             Positioned.fill(
-              child: _BackdropImage(
-                url: entry.imageOriginal ?? entry.imageMedium,
-              ),
+              child: entry.isMovie
+                  ? MovieArtwork(
+                      movieId: entry.showId,
+                      imageUrl: entry.imageOriginal ?? entry.imageMedium,
+                    )
+                  : _BackdropImage(
+                      url: entry.imageOriginal ?? entry.imageMedium,
+                    ),
             ),
             const Positioned.fill(
               child: DecoratedBox(
@@ -899,7 +910,12 @@ class _WatchlistCard extends StatelessWidget {
               Expanded(
                 child: SizedBox(
                   width: double.infinity,
-                  child: _PosterImage(url: entry.imageMedium),
+                  child: entry.isMovie
+                      ? MovieArtwork(
+                          movieId: entry.showId,
+                          imageUrl: entry.imageMedium,
+                        )
+                      : _PosterImage(url: entry.imageMedium),
                 ),
               ),
               Padding(
