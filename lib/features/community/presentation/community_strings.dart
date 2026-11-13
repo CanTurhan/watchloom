@@ -267,8 +267,8 @@ class CommunityStrings {
         'Bu yorum artık kullanılamıyor. Yenileyip tekrar dene.',
       ),
       CommunityFailure.permissionDenied => text(
-        'This action could not be authorized. Check account verification or contact support.',
-        'Bu işlem yetkilendirilemedi. Hesap doğrulamanı kontrol et veya desteğe yaz.',
+        'This action could not be authorized. Refresh, check your account and community consent, then try again. Only your own comments can be changed.',
+        'Bu işleme izin verilmedi. Yenile, hesabını ve topluluk onayını kontrol edip tekrar dene. Yalnızca kendi yorumlarını değiştirebilirsin.',
       ),
       _ => unavailable,
     };

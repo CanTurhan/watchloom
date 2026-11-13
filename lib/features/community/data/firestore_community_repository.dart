@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import '../../account/data/firestore_account_store.dart';
 import '../domain/community_models.dart';
 import '../domain/community_policy.dart';
@@ -11,10 +12,12 @@ class FirestoreCommunityRepository implements CommunityRepository {
     required this.firestore,
     required this.uid,
     this.moderationRequest,
+    this.prepareSession,
   });
   final FirebaseFirestore firestore;
   final String? uid;
   final CommunityModerationRequest? moderationRequest;
+  final Future<void> Function()? prepareSession;
   Future<void>? _bootstrap;
   static const _server = GetOptions(source: Source.server);
   CollectionReference<Map<String, dynamic>> get _comments =>
@@ -28,10 +31,12 @@ class FirestoreCommunityRepository implements CommunityRepository {
     return uid!;
   }
 
-  Future<T> _guard<T>(Future<T> Function() action) async {
+  Future<T> _guard<T>(String operation, Future<T> Function() action) async {
     try {
       return await action();
     } on FirebaseException catch (error) {
+      // Only fixed operation names and SDK codes; never identity or content.
+      debugPrint('community operation=$operation code=${error.code}');
       throw CommunityException(
         error.code == 'permission-denied'
             ? CommunityFailure.permissionDenied
@@ -43,7 +48,13 @@ class FirestoreCommunityRepository implements CommunityRepository {
   Future<void> _prepareOwner() async {
     final previous = _bootstrap;
     if (previous != null) return previous;
-    final pending = FirestoreAccountStore(firestore, _owner).bootstrap();
+    final pending = _guard('sessionAndBootstrap', () async {
+      await prepareSession?.call();
+      await _guard(
+        'accountBootstrap',
+        () => FirestoreAccountStore(firestore, _owner).bootstrap(),
+      );
+    });
     _bootstrap = pending;
     try {
       await pending;
@@ -54,29 +65,30 @@ class FirestoreCommunityRepository implements CommunityRepository {
   }
 
   @override
-  Future<CommunityAvailability> availability() => _guard(() async {
-    final data =
-        (await firestore
-                .collection('communityConfig')
-                .doc('current')
-                .get(_server))
-            .data();
-    final endpoint = CommunityPolicy.moderationEndpoint(
-      data?['moderationEndpoint'],
-    );
-    return CommunityAvailability(
-      enabled: data?['enabled'] == true,
-      moderationReady:
-          data?['moderationReady'] == true &&
-          data?['rulesVersion'] == 2 &&
-          data?['moderationMode'] == 'automatic' &&
-          endpoint != null,
-      moderationEndpoint: endpoint,
-    );
-  });
+  Future<CommunityAvailability> availability() =>
+      _guard('availability', () async {
+        final data =
+            (await firestore
+                    .collection('communityConfig')
+                    .doc('current')
+                    .get(_server))
+                .data();
+        final endpoint = CommunityPolicy.moderationEndpoint(
+          data?['moderationEndpoint'],
+        );
+        return CommunityAvailability(
+          enabled: data?['enabled'] == true,
+          moderationReady:
+              data?['moderationReady'] == true &&
+              data?['rulesVersion'] == 2 &&
+              data?['moderationMode'] == 'automatic' &&
+              endpoint != null,
+          moderationEndpoint: endpoint,
+        );
+      });
 
   @override
-  Future<CommunityProfile?> profile() => _guard(() async {
+  Future<CommunityProfile?> profile() => _guard('profile', () async {
     await _prepareOwner();
     final data = (await _profile(_owner).get(_server)).data();
     return data == null ? null : _identity(data);
@@ -88,7 +100,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
     String? nickname,
     required CommunityDisplayMode displayMode,
     bool acceptedTerms = false,
-  }) => _guard(() async {
+  }) => _guard('saveProfile', () async {
     if (!acceptedTerms) {
       throw const CommunityException(CommunityFailure.termsRequired);
     }
@@ -166,7 +178,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
     CommunityContentKind contentKind = CommunityContentKind.series,
     int limit = 50,
     CommunityCommentSort sort = CommunityCommentSort.best,
-  }) => _guard(() async {
+  }) => _guard('comments', () async {
     CommunityPolicy.content(contentKey, contentKind);
     Query<Map<String, dynamic>> query = _comments
         .where('contentKey', isEqualTo: contentKey)
@@ -184,7 +196,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
   @override
   Future<List<CommunityComment>> pendingComments({
     required String contentKey,
-  }) => _guard(() async {
+  }) => _guard('pendingComments', () async {
     await _prepareOwner();
     CommunityPolicy.content(
       contentKey,
@@ -210,7 +222,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
     String? parentId,
     bool isSpoiler = false,
     CommunityWatchContext? watchContext,
-  }) => _guard(() async {
+  }) => _guard('post', () async {
     CommunityPolicy.content(contentKey, contentKind);
     final text = CommunityPolicy.body(body);
     final available = await availability();
@@ -273,15 +285,17 @@ class FirestoreCommunityRepository implements CommunityRepository {
   });
 
   @override
-  Future<void> deleteComment(String id) =>
-      _guard(() => _comments.doc(id).delete());
+  Future<void> deleteComment(String id) => _guard('deleteComment', () async {
+    await _prepareOwner();
+    await _comments.doc(id).delete();
+  });
 
   @override
   Future<void> editComment({
     required CommunityComment comment,
     required String body,
     required bool isSpoiler,
-  }) => _guard(() async {
+  }) => _guard('editComment', () async {
     final text = CommunityPolicy.body(body);
     if (comment.authorUid != _owner ||
         !RegExp(r'^[A-Za-z0-9]{20}$').hasMatch(comment.id)) {
@@ -334,7 +348,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
   Future<void> report({
     required String commentId,
     required CommunityReportReason reason,
-  }) => _guard(() async {
+  }) => _guard('report', () async {
     await _prepareOwner();
     final owner = _owner;
     final ref = firestore.collection('communityReports').doc();
@@ -370,7 +384,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
   });
 
   @override
-  Future<void> blockUser(String authorUid) => _guard(() async {
+  Future<void> blockUser(String authorUid) => _guard('blockUser', () async {
     await _prepareOwner();
     if (authorUid == _owner ||
         !RegExp(r'^[A-Za-z0-9_-]{1,128}$').hasMatch(authorUid)) {
@@ -393,6 +407,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
 
   @override
   Future<void> unblockUser(String authorUid) => _guard(
+    'unblockUser',
     () => firestore
         .collection('communityBlocks')
         .doc(_owner)
@@ -402,7 +417,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
   );
 
   @override
-  Future<Set<String>> blockedUsers() => _guard(() async {
+  Future<Set<String>> blockedUsers() => _guard('blockedUsers', () async {
     await _prepareOwner();
     final result = <String>{};
     QueryDocumentSnapshot<Map<String, dynamic>>? cursor;
@@ -424,6 +439,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
 
   @override
   Future<Map<String, int>> votesForComments(Iterable<String> ids) => _guard(
+    'votesForComments',
     () async {
       final selected = ids.toSet().toList();
       if (selected.length > 50 ||
@@ -453,7 +469,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
 
   @override
   Future<void> setVote({required String commentId, required int value}) =>
-      _guard(() async {
+      _guard('setVote', () async {
         await _prepareOwner();
         await CommunityVoteTransaction.apply(
           firestore: firestore,

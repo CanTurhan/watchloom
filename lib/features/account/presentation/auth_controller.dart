@@ -93,6 +93,10 @@ class AuthController extends ChangeNotifier with WidgetsBindingObserver {
     final previous = user;
     try {
       await previous?.reload();
+      if (user?.uid == previous?.uid) {
+        await user?.getIdToken(true);
+        await _refreshTokenIdentity();
+      }
     } on FirebaseAuthException catch (error) {
       if (error.code == 'user-not-found') lastDeletedUserId = previous?.uid;
       if ([
@@ -209,6 +213,7 @@ class AuthController extends ChangeNotifier with WidgetsBindingObserver {
   Future<bool> refreshUser() => _run(() async {
     await user!.reload();
     await user!.getIdToken(true);
+    await _refreshTokenIdentity();
   });
 
   Future<bool> signOut() => _run(() async {

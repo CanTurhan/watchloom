@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:watchloom/app/app_scope.dart';
 import 'package:watchloom/features/community/data/firestore_community_repository.dart';
 import 'package:watchloom/features/community/domain/community_repository.dart';
+import 'package:watchloom/features/community/data/community_session.dart';
 import 'package:watchloom/features/community/data/community_moderation_client.dart';
 
 CommunityRepository? communityRepositoryFor(BuildContext context) {
@@ -13,6 +14,7 @@ CommunityRepository? communityRepositoryFor(BuildContext context) {
   return FirestoreCommunityRepository(
     firestore: FirebaseFirestore.instanceFor(app: auth.app),
     uid: uid,
+    prepareSession: () => prepareCommunitySession(auth, uid),
     moderationRequest: uid == null
         ? null
         : (commentId, endpoint) async {
