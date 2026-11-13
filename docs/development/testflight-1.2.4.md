@@ -14,19 +14,25 @@ Topluluk oturum doğrulama düzeltmeleri için hazırlanan iOS test sürümü.
 
 ## Yayın durumu
 
-TestFlight yüklemesi yapılmadı. Son canlı topluluk doğrulaması Worker TLS
-bağlantısında `EPROTO` hatasıyla durdu. Firestore kontrolü son denemede geçti;
-ağ değişiklikleri sırasında sonuçlar değiştiğinden canlı erişim yeniden
-doğrulanmalı. Bu kayıt gerçek cihaz testi veya yükleme başarısı anlamına gelmez.
+13 Kasım 2026 tarihinde 1.2.4 (15) paketi App Store Connect'e başarıyla
+yüklendi. Xcode `Upload succeeded` ve `EXPORT SUCCEEDED` bildirdi; Apple
+paketi işleme aşamasına aldı. İşlemenin tamamlandığı veya test gruplarına
+dağıtımın etkin olduğu henüz doğrulanmadı.
+
+Son canlı topluluk doğrulaması Worker TLS bağlantısında `EPROTO` hatasıyla
+durdu. Firestore kontrolü geçti. Kullanıcının TestFlight yükleme talebiyle,
+arşiv güvenlik/sürüm ve kod imzası ayrıca doğrulanıp mevcut TestFlight export
+ayarları kullanılarak `xcodebuild -exportArchive` ile doğrudan beta yüklemesi
+yapıldı. Yayın betiğindeki kontroller değiştirilmedi. Bu yükleme canlı
+moderasyonun veya tüm özelliklerin gerçek cihazda doğrulandığı anlamına gelmez.
+
+Yükleme günlüğü yerelde `/tmp/watchloom-1.2.4-15-apple-upload.log` konumunda.
 
 Yerel çıktılar:
 
 - `build/ios/archive/Runner.xcarchive`
 - `build/ios/ipa/Watchloom.ipa`
 
-Bağlantı düzeldiğinde `bash scripts/release_ios.sh --upload-existing` hazır
-arşivi Firebase, canlı topluluk, güvenlik ve sürüm kontrollerinden sonra yükler.
-Arşiv farklı kaynak veya sürümle yeniden oluşturulduysa önce çıktıları kontrol
-edin. Yükleme sonrasında App Store Connect işlemesi ve gerçek cihazda giriş,
-topluluk onayı, yorum/yanıt/düzenleme/silme, yedekleme ve satın alma akışları
-ayrıca doğrulanmalı.
+Aynı sürüm/build numarasıyla yeniden yükleme yapmayın. App Store Connect
+işlemesi ve gerçek cihazda giriş, topluluk onayı,
+yorum/yanıt/düzenleme/silme, yedekleme ve satın alma akışları ayrıca doğrulanmalı.
