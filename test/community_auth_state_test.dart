@@ -58,6 +58,131 @@ void main() {
     repositoryForUser: repositories == null ? null : (uid) => repositories[uid],
   );
 
+  for (final provider in ['apple.com', 'google.com', 'password']) {
+    for (final kind in CommunityContentKind.values) {
+      testWidgets(
+        '$provider / ${kind.name}: comment create/edit/delete and up/down controls work',
+        (tester) async {
+          final auth = _LiveAuth(
+            uid: 'owner',
+            provider: provider,
+            emailVerified: provider == 'password',
+            providerResolved: true,
+          );
+          final key = kind == CommunityContentKind.movie
+              ? 'imdb:movie:tt1375666'
+              : 'tvmaze:show:1';
+          final repository = _BoundRepository('owner')
+            ..approved = [
+              CommunityComment(
+                id: 'peer',
+                contentKey: key,
+                contentKind: kind,
+                authorUid: 'other',
+                authorName: '@other',
+                body: 'Another viewer comment',
+                status: CommunityCommentStatus.approved,
+                createdAt: DateTime(2026, 11, 5),
+              ),
+            ];
+          await pumpPage(
+            tester,
+            CommunityPage(
+              contentKey: key,
+              contentKind: kind,
+              seriesName: 'Matrix title',
+              repository: repository,
+              viewerUid: 'owner',
+              verified: false,
+              auth: auth,
+            ),
+          );
+          await tester.pumpAndSettle();
+          final write = find.byKey(const ValueKey('community-write-comment'));
+          await tester.ensureVisible(write);
+          await tester.tap(write);
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const ValueKey('community-comment-body')),
+            'My new comment',
+          );
+          final submit = find.byKey(const ValueKey('community-submit-comment'));
+          await tester.ensureVisible(submit);
+          await tester.tap(submit);
+          await tester.pumpAndSettle();
+          expect(repository.posted, 1);
+          expect(repository.pending.single.contentKind, kind);
+          expect(repository.pending.single.contentKey, key);
+          expect(
+            repository.pending.single.status,
+            CommunityCommentStatus.pending,
+          );
+          final createdId = repository.pending.single.id;
+          Finder menu(String id) => find.descendant(
+            of: find.byKey(ValueKey('community-comment-$id')),
+            matching: find.byType(PopupMenuButton<String>),
+          );
+          await tester.ensureVisible(menu(createdId));
+          await tester.tap(menu(createdId));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Edit comment'));
+          await tester.pumpAndSettle();
+          await tester.enterText(
+            find.byKey(const ValueKey('community-comment-body')),
+            'My edited comment',
+          );
+          await tester.ensureVisible(submit);
+          await tester.tap(submit);
+          await tester.pumpAndSettle();
+          expect(repository.pending.single.body, 'My edited comment');
+          expect(repository.pending.single.editRevision, 1);
+          expect(
+            repository.pending.single.status,
+            CommunityCommentStatus.pending,
+          );
+          await tester.ensureVisible(menu(createdId));
+          await tester.tap(menu(createdId));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Delete'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.widgetWithText(FilledButton, 'Delete'));
+          await tester.pumpAndSettle();
+          expect(repository.pending, isEmpty);
+          final up = find.byKey(const ValueKey('community-vote-up-peer'));
+          final down = find.byKey(const ValueKey('community-vote-down-peer'));
+          await tester.ensureVisible(up);
+          await tester.tap(up);
+          await tester.pumpAndSettle();
+          await tester.pump(const Duration(seconds: 1));
+          expect(repository.votes['peer'], 1);
+          await tester.ensureVisible(down);
+          await tester.tap(down);
+          await tester.pumpAndSettle();
+          await tester.pump(const Duration(seconds: 1));
+          expect(repository.votes['peer'], -1);
+          await tester.tap(down);
+          await tester.pumpAndSettle();
+          await tester.pump(const Duration(seconds: 1));
+          expect(repository.votes.containsKey('peer'), isFalse);
+          expect(repository.voteRequests, [
+            ('peer', 1),
+            ('peer', -1),
+            ('peer', 0),
+          ]);
+          await tester.ensureVisible(menu('peer'));
+          await tester.tap(menu('peer'));
+          await tester.pumpAndSettle();
+          expect(find.text('Edit comment'), findsNothing);
+          expect(find.text('Delete'), findsNothing);
+          expect(find.text('Report'), findsOneWidget);
+          await tester.pumpWidget(const SizedBox());
+          auth.dispose();
+          expect(tester.takeException(), isNull);
+        },
+      );
+    }
+  }
+
   testWidgets('identity read timeout offers retry and ignores late profile', (
     tester,
   ) async {

@@ -3,7 +3,7 @@ const {test} = require('node:test');
 const assert = require('node:assert/strict');
 const {randomBytes, randomUUID} = require('node:crypto');
 
-test('Spark automatic series community and vote security rules', {timeout: 180000}, async t => {
+test('Spark automatic series/movie community and vote security rules', {timeout: 180000}, async t => {
   for (const host of [process.env.FIRESTORE_EMULATOR_HOST, process.env.FIREBASE_AUTH_EMULATOR_HOST]) {
     assert.ok(host && ['127.0.0.1', 'localhost', '[::1]'].includes(new URL(`http://${host}`).hostname),
       'Local Auth + Firestore emulators are mandatory; production is forbidden.');
@@ -112,48 +112,141 @@ test('Spark automatic series community and vote security rules', {timeout: 18000
       rulesVersion: 2, moderationMode: 'automatic'});
     await db.doc(`communityModerators/${mod.uid}`).set({active: true});
     const rootId = id(), replyId = id(), reportId = id();
-    await t.test('provider parity, persisted consent, legacy consent and owner lifecycle', async () => {
-      // Synthetic unsigned claims are accepted ONLY by the loopback emulator.
-      // This tests Firestore claim policy, not real provider credential exchange.
-      for (const provider of ['apple.com', 'google.com', 'password']) {
+    await t.test('provider and media authorization matrix', async matrix => {
+      // These synthetic claims are accepted ONLY by the loopback emulator.
+      // Real Apple/Google credential exchange still requires device QA.
+      async function providerUser(provider) {
         const identity = await user();
         const claims = JSON.parse(Buffer.from(identity.token.split('.')[1], 'base64url'));
         claims.email_verified = provider === 'password';
         claims.firebase.sign_in_provider = provider;
         identity.token = `${Buffer.from(JSON.stringify({alg: 'none', typ: 'JWT'})).toString('base64url')}.${Buffer.from(JSON.stringify(claims)).toString('base64url')}.`;
-        // Legacy Auth account without an application root can bootstrap safely.
-        await db.doc(`users/${identity.uid}`).delete();
-        assert.equal((await read(`deletionMarkers/${identity.uid}`, identity.token)).status, 404);
-        assert.equal((await write(`users/${identity.uid}`, {schema: 1, status: 'active', revision: 0,
-          activeBackupId: null, previousBackupId: null}, identity.token,
-          {timestamps: ['createdAt', 'updatedAt']})).status, 200);
-        const handle = `fan_${identity.uid.slice(0, 8).toLowerCase()}`;
-        assert.equal((await commit(profileWrites(identity, handle), identity.token)).status, 200);
-        const path = `communityProfiles/${identity.uid}`;
-        // A fresh client reads durable consent; no local preference is needed.
-        assert.equal((await read(path, identity.token)).json.fields.acceptedPolicyVersion.stringValue, '2026-11-06-auto-v1');
-        const target = id();
-        await db.doc(path).update({acceptedPolicyVersion: '2026-11-05'});
-        assert.equal((await post(identity, target)).status, 403);
-        assert.equal((await write(path, {acceptedPolicyVersion: '2026-11-06-auto-v1'}, identity.token,
-          {patch: true, timestamps: ['updatedAt', 'acceptedPolicyAt']})).status, 200);
-        assert.equal((await post(identity, target)).status, 200);
-        await db.doc(`communityComments/${target}`).update({status: 'approved'});
-        await resetPost(identity);
-        assert.equal((await commit([update(`communityComments/${target}`,
-          {body: 'Updated comment', isSpoiler: false, status: 'pending', editRevision: 1},
-          {patch: true, timestamps: ['editedAt', 'moderationNextAt']}),
-          await counterWrite(identity, 'Post', target)], identity.token)).status, 200);
-        assert.equal((await read(`communityComments/${target}`, b.token)).status, 403);
-        assert.equal((await remove(`communityComments/${target}`, b.token)).status, 403);
-        await db.doc(`communityComments/${target}`).update({status: 'approved'});
-        await resetPost(identity);
-        const reply = id();
-        assert.equal((await post(identity, reply, {parentId: target})).status, 200);
-        assert.equal((await remove(`communityComments/${reply}`, identity.token)).status, 200);
-        assert.equal((await remove(`communityComments/${target}`, identity.token)).status, 200);
+        return identity;
+      }
+      const providers = ['apple.com', 'google.com', 'password'];
+      for (const provider of providers) for (const contentKind of ['series', 'movie']) {
+        await matrix.test(`${provider} / ${contentKind}: create, reply, owner edit/delete and all-provider up/down votes`, async () => {
+          const identity = await providerUser(provider);
+          // An old Auth account without an application root can bootstrap.
+          await db.doc(`users/${identity.uid}`).delete();
+          assert.equal((await read(`deletionMarkers/${identity.uid}`, identity.token)).status, 404);
+          assert.equal((await write(`users/${identity.uid}`, {schema: 1, status: 'active', revision: 0,
+            activeBackupId: null, previousBackupId: null}, identity.token,
+            {timestamps: ['createdAt', 'updatedAt']})).status, 200);
+          const handle = `fan_${identity.uid.slice(0, 8).toLowerCase()}`;
+          assert.equal((await commit(profileWrites(identity, handle), identity.token)).status, 200);
+          const path = `communityProfiles/${identity.uid}`;
+          const media = {contentKind, contentKey: contentKind === 'movie' ? 'imdb:movie:tt1375666' : 'tvmaze:show:123'};
+          const target = id(), commentPath = `communityComments/${target}`;
+          // Reinstallation reads the same server-side policy acceptance.
+          assert.equal((await read(path, identity.token)).json.fields.acceptedPolicyVersion.stringValue, '2026-11-06-auto-v1');
+          await db.doc(path).update({acceptedPolicyVersion: '2026-11-05'});
+          assert.equal((await post(identity, target, media)).status, 403);
+          const renew = () => write(path, {acceptedPolicyVersion: '2026-11-06-auto-v1'}, identity.token,
+            {patch: true, timestamps: ['updatedAt', 'acceptedPolicyAt']});
+          assert.equal((await renew()).status, 200);
+          assert.equal((await post(identity, target, media)).status, 200);
+          assert.equal((await read(commentPath)).status, 403);
+          assert.equal((await read(commentPath, identity.token)).status, 200);
+          const voters = [];
+          for (const voterProvider of providers) {
+            const voter = await providerUser(voterProvider);
+            const voterHandle = `fan_${voter.uid.slice(0, 8).toLowerCase()}`;
+            assert.equal((await commit(profileWrites(voter, voterHandle), voter.token)).status, 200);
+            voters.push(voter);
+            assert.equal((await commit(await voteWrites(voter, target, 1), voter.token)).status, 403,
+              `${voterProvider} cannot vote on pending ${contentKind}`);
+          }
+          // Publication is simulated as a trusted server write, never a client grant.
+          await db.doc(commentPath).update({status: 'approved'});
+          assert.equal((await commit(await voteWrites(identity, target, 1), identity.token)).status, 403);
+          for (const voter of voters) {
+            assert.equal((await remove(commentPath, voter.token)).status, 403);
+            assert.equal((await commit([update(commentPath,
+              {body: 'Unauthorized edit', isSpoiler: false, status: 'pending', editRevision: 1},
+              {patch: true, timestamps: ['editedAt', 'moderationNextAt']}),
+              await counterWrite(voter, 'Post', target)], voter.token)).status, 403);
+            await db.doc(`communityProfiles/${voter.uid}`).update({acceptedPolicyVersion: '2026-11-05'});
+            assert.equal((await commit(await voteWrites(voter, target, 1), voter.token)).status, 403);
+            assert.equal((await write(`communityProfiles/${voter.uid}`, {acceptedPolicyVersion: '2026-11-06-auto-v1'}, voter.token,
+              {patch: true, timestamps: ['updatedAt', 'acceptedPolicyAt']})).status, 200);
+            for (const value of [1, -1, 0]) {
+              await resetVote(voter);
+              assert.equal((await commit(await voteWrites(voter, target, value), voter.token)).status, 200);
+              const saved = (await db.doc(commentPath).get()).data();
+              assert.deepEqual([saved.upVotes, saved.downVotes, saved.score],
+                value === 1 ? [1, 0, 1] : value === -1 ? [0, 1, -1] : [0, 0, 0]);
+            }
+            assert.equal((await db.doc(`communityProfiles/${voter.uid}`).get()).data().voteCount, 0);
+          }
+          // An edit must preserve another user's existing acknowledged vote.
+          const voter = voters[0];
+          await resetVote(voter);
+          assert.equal((await commit(await voteWrites(voter, target, 1), voter.token)).status, 200);
+          await resetPost(identity);
+          const editWrites = async () => [update(commentPath,
+            {body: 'Updated comment', isSpoiler: false, status: 'pending', editRevision: 1},
+            {patch: true, timestamps: ['editedAt', 'moderationNextAt']}),
+            await counterWrite(identity, 'Post', target)];
+          await db.doc(path).update({acceptedPolicyVersion: '2026-11-05'});
+          assert.equal((await commit(await editWrites(), identity.token)).status, 403);
+          assert.equal((await renew()).status, 200);
+          assert.equal((await commit(await editWrites(), identity.token)).status, 200);
+          const edited = (await db.doc(commentPath).get()).data();
+          assert.deepEqual([edited.status, edited.editRevision, edited.upVotes, edited.downVotes, edited.score],
+            ['pending', 1, 1, 0, 1]);
+          assert.equal((await read(commentPath)).status, 403);
+          assert.equal((await read(commentPath, voter.token)).status, 403);
+          await resetVote(voter);
+          assert.equal((await commit(await voteWrites(voter, target, -1), voter.token)).status, 403);
+          assert.equal((await commit(await voteWrites(voter, target, 0), voter.token)).status, 200);
+          await db.doc(commentPath).update({status: 'approved'});
+          await resetPost(identity);
+          const reply = id();
+          assert.equal((await post(identity, reply, {...media, parentId: target})).status, 200);
+          assert.equal((await remove(`communityComments/${reply}`, identity.token)).status, 200);
+          assert.equal((await remove(commentPath, identity.token)).status, 200);
+          assert.equal((await db.doc(commentPath).get()).exists, false);
+        });
       }
     });
+    for (const contentKind of ['series', 'movie']) {
+      await t.test(`${contentKind}: unverified password and anonymous users cannot create, edit, delete or vote`, async () => {
+        const owner = await user(), restricted = await user(false);
+        const ownerHandle = `fan_${owner.uid.slice(0, 8).toLowerCase()}`;
+        assert.equal((await commit(profileWrites(owner, ownerHandle), owner.token)).status, 200);
+        // Seed a legacy unverified user's documents as Admin so denials prove
+        // verification requirements, rather than just missing bootstrap data.
+        await db.doc(`users/${restricted.uid}`).set((await db.doc(`users/${owner.uid}`).get()).data());
+        await db.doc(`communityProfiles/${restricted.uid}`).set({
+          ...(await db.doc(`communityProfiles/${owner.uid}`).get()).data(),
+          handle: `fan_${restricted.uid.slice(0, 8).toLowerCase()}`});
+        const media = {contentKind, contentKey: contentKind === 'movie' ? 'imdb:movie:tt1375666' : 'tvmaze:show:123'};
+        const target = id();
+        assert.equal((await post(owner, target, media)).status, 200);
+        await db.doc(`communityComments/${target}`).update({status: 'approved'});
+        const owned = id();
+        await db.doc(`communityComments/${owned}`).set({
+          ...(await db.doc(`communityComments/${target}`).get()).data(), authorUid: restricted.uid});
+        assert.equal((await post(restricted, id(), media)).status, 403);
+        const edit = [update(`communityComments/${owned}`,
+          {body: 'Unverified edit', isSpoiler: false, status: 'pending', editRevision: 1},
+          {patch: true, timestamps: ['editedAt', 'moderationNextAt']}),
+          await counterWrite(restricted, 'Post', owned)];
+        assert.equal((await commit(edit, restricted.token)).status, 403);
+        assert.equal((await remove(`communityComments/${owned}`, restricted.token)).status, 403);
+        assert.equal((await commit(await postWrites(owner, id(), media))).status, 403);
+        assert.equal((await commit(edit)).status, 403);
+        assert.equal((await remove(`communityComments/${target}`)).status, 403);
+        for (const value of [1, -1]) {
+          const votes = await voteWrites(restricted, target, value);
+          assert.equal((await commit(votes, restricted.token)).status, 403);
+          assert.equal((await commit(votes)).status, 403);
+        }
+        assert.equal((await db.doc(`communityComments/${target}`).get()).data().score, 0);
+        assert.equal((await remove(`communityComments/${target}`, owner.token)).status, 200);
+      });
+    }
     await t.test('verified explicit identity and policy consent; no forged roles or private profile reads', async () => {
       assert.equal((await commit(profileWrites(unverified, 'unverified_user'), unverified.token)).status, 403);
       assert.equal((await commit(profileWrites(a, handles.get(a.uid), {acceptedPolicyVersion: 'old'}), a.token)).status, 403);
