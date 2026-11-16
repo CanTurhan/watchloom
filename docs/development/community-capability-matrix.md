@@ -63,8 +63,8 @@ kamuya açılır.
 - Gerçek cihazda Apple/Google/e-posta girişi, aynı UID ile yeniden kurulum,
   yorumlar, oylar ve canlı moderasyon yeni build üzerinde ayrıca sınanmalı.
 
-Bu çalışma production'a yorum/oy yazmadı ve kullanıcı verisi silmedi. Build
-hazırlığı TestFlight yüklemesi veya canlı moderasyonun doğrulanması değildir.
+Bu çalışma production'a yorum/oy yazmadı ve kullanıcı verisi silmedi. Yerel
+build ve başarılı beta yüklemesi canlı moderasyonun doğrulanması değildir.
 
 ## Hazırlanan iOS test paketi
 
@@ -76,5 +76,15 @@ hazırlığı TestFlight yüklemesi veya canlı moderasyonun doğrulanması değ
 - Arşiv: `build/ios/archive/Runner.xcarchive`.
 - IPA: `build/ios/ipa/Watchloom.ipa`.
 - Önceki arşiv/IPA silinmeden `build/ios/previous-*` dizinlerine taşındı.
-- TestFlight'a yüklenmedi. Yeni build bekleme düzeltmelerini içerir; daha önce
-  yüklenen 1.2.4 (15) bu düzeltmeleri içermez.
+- 16 Kasım 2026 tarihinde App Store Connect'e TestFlight için başarıyla yüklendi.
+  Xcode `Upload succeeded` ve `EXPORT SUCCEEDED` bildirdi; Apple paketi işleme
+  aşamasına aldı. İşlemenin tamamlandığı ve test grubu erişimi doğrulanmadı.
+- Yeni build bekleme düzeltmelerini içerir; daha önce yüklenen 1.2.4 (15) bu
+  düzeltmeleri içermez.
+- Son yükleme öncesi Firestore, arşiv, kod imzası ve paket güvenliği kontrolleri
+  geçti. Worker canlı kontrolü `EPROTO` ile durdu. Kullanıcının beta yükleme
+  talebiyle mevcut TestFlight export ayarları kullanılarak doğrudan
+  `xcodebuild -exportArchive` çalıştırıldı. Yayın betiğinin kontrolleri
+  değiştirilmedi; Worker TLS sorunu açık test sınırlaması olarak kaldı.
+- Yerel yükleme günlüğü: `/tmp/watchloom-1.2.5-16-apple-upload.log`.
+- Aynı sürüm/build numarasıyla yeniden yükleme yapmayın.

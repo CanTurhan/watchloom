@@ -1,7 +1,9 @@
 # Giriş ve topluluk yükleme kurtarması
 
-Bu değişiklikler daha önce yüklenen 1.2.4 (15) paketinde yoktur; cihazda
-denenebilmesi için yeni bir iOS build'i gerekir.
+Bu değişiklikler daha önce yüklenen 1.2.4 (15) paketinde yoktur. 1.2.5 (16)
+paketine dahil edildi ve 16 Kasım 2026 tarihinde TestFlight için App Store
+Connect'e başarıyla yüklendi. Apple işlemesi, test grubu erişimi ve gerçek
+cihaz kontrolleri ayrıca doğrulanmalıdır.
 
 ## Bekleme sınırları
 
