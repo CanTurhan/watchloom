@@ -1,9 +1,46 @@
+import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watchloom/features/community/data/community_session.dart';
 import 'package:watchloom/features/community/domain/community_models.dart';
 
 void main() {
+  for (final phase in ['reload', 'token']) {
+    testWidgets('session $phase timeout stops subsequent authorization work', (
+      tester,
+    ) async {
+      final gate = Completer<void>();
+      final user = _User('apple.com');
+      if (phase == 'reload') {
+        user.reloadGate = gate.future;
+      } else {
+        user.tokenGate = gate.future;
+      }
+      Object? failure;
+      final pending = prepareCommunitySession(_Auth(user), 'owner').catchError((
+        Object error,
+      ) {
+        failure = error;
+      });
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 21));
+      await pending;
+      expect(
+        failure,
+        isA<CommunityException>().having(
+          (e) => e.failure,
+          'failure',
+          CommunityFailure.timedOut,
+        ),
+      );
+      gate.complete();
+      await tester.pump();
+      expect(
+        user.events,
+        phase == 'reload' ? ['reload'] : ['reload', 'token:true'],
+      );
+    });
+  }
   final denied = isA<CommunityException>().having(
     (e) => e.failure,
     'failure',
@@ -82,17 +119,20 @@ class _User implements User {
   final String uid;
   final events = <String>[];
   void Function()? onReload, onToken;
+  Future<void>? reloadGate, tokenGate;
   @override
   bool get emailVerified => true; // Intentionally stale local state.
   @override
   Future<void> reload() async {
     events.add('reload');
+    if (reloadGate != null) await reloadGate;
     onReload?.call();
   }
 
   @override
   Future<IdTokenResult> getIdTokenResult([bool forceRefresh = false]) async {
     events.add('token:$forceRefresh');
+    if (tokenGate != null) await tokenGate;
     onToken?.call();
     return _Token(provider, verified);
   }

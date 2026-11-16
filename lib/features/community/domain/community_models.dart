@@ -12,6 +12,7 @@ enum CommunityReportReason { abuse, hate, sexual, spam, spoiler, other }
 
 enum CommunityFailure {
   unavailable,
+  timedOut,
   verificationRequired,
   identityRequired,
   invalidIdentity,
@@ -147,7 +148,8 @@ class CommunityWatchContext {
       return null;
     }
     final season = value['season'], episode = value['episode'];
-    if (value['status'] == 'not_started' && (season != null || episode != null)) {
+    if (value['status'] == 'not_started' &&
+        (season != null || episode != null)) {
       return null;
     }
     if ((season != null || episode != null) &&

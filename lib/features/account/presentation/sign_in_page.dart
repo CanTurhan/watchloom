@@ -268,7 +268,7 @@ class _SignInPageState extends State<SignInPage> {
                       style: FilledButton.styleFrom(
                         minimumSize: const Size.fromHeight(52),
                       ),
-                      child: auth.busy
+                      child: auth.busy && !auth.operationSlow
                           ? const SizedBox(
                               width: 20,
                               height: 20,
@@ -299,7 +299,7 @@ class _SignInPageState extends State<SignInPage> {
                       ],
                     ),
                     TextButton(
-                      onPressed: auth.busy
+                      onPressed: auth.busy && !auth.operationSlow
                           ? null
                           : () => Navigator.of(context).pop(),
                       child: Text(s.guestContinue),

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 /// Device time selects an initial proposal, never permission to submit. Rules
 /// compare both proposals against request.time. The second proposal is useful
 /// for a device clock on the wrong side of a rolling 24-hour window boundary.
@@ -11,7 +13,7 @@ abstract final class CommunitySubmission {
   }) async {
     if (endpoint != null && request != null) {
       try {
-        await request(commentId, endpoint);
+        await request(commentId, endpoint).timeout(const Duration(seconds: 15));
       } catch (_) {
         /* Still pending. */
       }

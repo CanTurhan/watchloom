@@ -26,9 +26,13 @@ class AccountSessionController extends ChangeNotifier {
     required this.guestDatabase,
     required this.library,
     required this.activity,
+    this.prepareLocalSession,
   }) {
     auth.addListener(_authChanged);
   }
+  // Platform cleanup is injectable so interrupted native calls can be tested.
+  final Future<void> Function()? prepareLocalSession;
+  static const switchTimeout = Duration(seconds: 20);
   final AuthController auth;
   final ShowRepository showRepository;
   final LibraryAccessPolicy accessPolicy;
@@ -83,55 +87,89 @@ class AccountSessionController extends ChangeNotifier {
     notifyListeners();
     final previousLibrary = library;
     final previousActivity = activity;
+    LibraryController? pendingLibrary;
+    WatchActivityController? pendingActivity;
+    final elapsed = Stopwatch()..start();
+    var phase = 'localPreparation';
+    Future<T> step<T>(String operation, Future<T> Function() action) async {
+      phase = operation;
+      final remaining = switchTimeout - elapsed.elapsed;
+      if (remaining <= Duration.zero) throw TimeoutException('session-switch');
+      return action().timeout(remaining);
+    }
+
     try {
       // Notifications and generated share cards must not expose another account.
-      try {
-        await UpcomingEpisodeNotificationService.instance.disable(
-          preservePreference: true,
+      if (prepareLocalSession != null) {
+        await step('localPreparation', prepareLocalSession!);
+      } else {
+        try {
+          await step(
+            'notificationCleanup',
+            () => UpcomingEpisodeNotificationService.instance.disable(
+              preservePreference: true,
+            ),
+          );
+        } on TimeoutException {
+          rethrow;
+        } catch (_) {
+          /* Unsupported platform. */
+        }
+        final temporary = await step(
+          'temporaryDirectory',
+          getTemporaryDirectory,
         );
-      } catch (_) {
-        /* Unsupported platform. */
+        await step(
+          'shareCleanup',
+          () => LocalDataResetService.clearGeneratedShareImages(temporary),
+        );
       }
-      await LocalDataResetService.clearGeneratedShareImages(
-        await getTemporaryDirectory(),
-      );
+      if (_disposed || ticket != _generation) return;
       final db = uid == null ? guestDatabase : WatchloomDatabase(userId: uid);
-      final nextLibrary = LibraryController(
+      final nextLibrary = pendingLibrary = LibraryController(
         SqliteLibraryRepository(
           LibraryLocalDataSource(db, accessPolicy: accessPolicy),
         ),
         accessPolicy: accessPolicy,
       );
-      final nextActivity = WatchActivityController(
+      final nextActivity = pendingActivity = WatchActivityController(
         repository: SqliteActivityRepository(ActivityLocalDataSource(db)),
         libraryController: nextLibrary,
         showRepository: showRepository,
       );
-      await nextLibrary.load();
-      await nextActivity.load();
-      final guestExists = !(await SqliteBackupStore(
-        guestDatabase,
-      ).read()).data.isEmpty;
+      await step('libraryLoad', nextLibrary.load);
+      await step('activityLoad', nextActivity.load);
+      final guest = await step(
+        'guestRead',
+        () => SqliteBackupStore(guestDatabase).read(),
+      );
+      final guestExists = !guest.data.isEmpty;
       if (nextLibrary.error != null || nextActivity.error != null) {
         throw StateError('local-load-failed');
       }
-      if (_disposed || ticket != _generation) {
-        nextLibrary.dispose();
-        nextActivity.dispose();
-        return;
-      }
+      if (_disposed || ticket != _generation) return;
+      final nextBackup = uid == null
+          ? null
+          : _createBackup(uid, db, nextLibrary, nextActivity);
       _accountDatabase = uid == null ? null : db;
       library = nextLibrary;
       activity = nextActivity;
+      backup = nextBackup;
       hasGuestData = guestExists;
-      if (uid != null) {
-        backup = _createBackup(uid, db, nextLibrary, nextActivity);
-      }
+      pendingLibrary = null;
+      pendingActivity = null;
       previousActivity.dispose();
       previousLibrary.dispose();
-    } catch (_) {
-      if (ticket == _generation) failed = true;
+    } catch (error) {
+      if (!_disposed && ticket == _generation) {
+        failed = true;
+        debugPrint(
+          'account operation=$phase code=${error is TimeoutException ? "deadline-exceeded" : "local-load-failed"}',
+        );
+      }
     } finally {
+      pendingActivity?.dispose();
+      pendingLibrary?.dispose();
       if (!_disposed && ticket == _generation) {
         switching = false;
         notifyListeners();

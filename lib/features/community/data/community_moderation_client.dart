@@ -25,7 +25,7 @@ class CommunityModerationClient {
     if (currentUid() != boundUid) {
       throw const CommunityException(CommunityFailure.verificationRequired);
     }
-    final token = await idToken();
+    final token = await idToken().timeout(const Duration(seconds: 12));
     if (currentUid() != boundUid || token == null || token.isEmpty) {
       throw const CommunityException(CommunityFailure.verificationRequired);
     }

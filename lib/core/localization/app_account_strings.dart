@@ -123,6 +123,14 @@ extension AppAccountStrings on AppStrings {
     tr: 'Hesap silme tamamlanamadı. İnternet bağlantısıyla yeniden giriş yapıp tekrar dene.',
   );
   String authError(String? code) => switch (code) {
+    'operation-pending' => value(
+      en: 'This request is taking longer than expected. If an Apple or Google window is open, finish or cancel it there. You can go back; a new request will be available when this one finishes.',
+      tr: 'İşlem beklenenden uzun sürüyor. Apple veya Google penceresi açıksa işlemi oradan tamamla ya da iptal et. Geri dönebilirsin; bu işlem sonuçlandığında yeniden deneyebilirsin.',
+    ),
+    'user-mismatch' => value(
+      en: 'Your account changed. Reopen the account screen to continue.',
+      tr: 'Hesabın değişti. Devam etmek için hesap ekranını yeniden aç.',
+    ),
     'email-already-in-use' => value(
       en: 'This email already has an account. Sign in or reset your password.',
       tr: 'Bu e-posta ile bir hesap var. Giriş yap veya parolanı sıfırla.',

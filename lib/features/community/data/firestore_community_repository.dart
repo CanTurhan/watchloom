@@ -5,6 +5,7 @@ import '../domain/community_models.dart';
 import '../domain/community_policy.dart';
 import '../domain/community_repository.dart';
 import '../domain/community_submission.dart';
+import '../domain/community_read.dart';
 import 'community_vote_transaction.dart';
 
 class FirestoreCommunityRepository implements CommunityRepository {
@@ -49,7 +50,10 @@ class FirestoreCommunityRepository implements CommunityRepository {
     final previous = _bootstrap;
     if (previous != null) return previous;
     final pending = _guard('sessionAndBootstrap', () async {
-      await prepareSession?.call();
+      await CommunityRead.run(
+        'prepareSession',
+        () => prepareSession?.call() ?? Future<void>.value(),
+      );
       await _guard(
         'accountBootstrap',
         () => FirestoreAccountStore(firestore, _owner).bootstrap(),

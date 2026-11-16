@@ -58,6 +58,108 @@ void main() {
     repositoryForUser: repositories == null ? null : (uid) => repositories[uid],
   );
 
+  testWidgets('identity read timeout offers retry and ignores late profile', (
+    tester,
+  ) async {
+    final repository = _BoundRepository('owner')
+      ..profileGate = Completer<CommunityProfile?>();
+    final late = repository.profileGate!;
+    final auth = _LiveAuth(uid: 'owner', emailVerified: true);
+    await pumpPage(tester, profile(auth, repository));
+    expect(find.byType(CircularProgressIndicator), findsOneWidget);
+    await tester.pump(const Duration(seconds: 21));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.textContaining('connection took too long'), findsOneWidget);
+    expect(find.byKey(const ValueKey('community-handle')), findsNothing);
+    late.complete(
+      const CommunityProfile(
+        handle: 'late_identity',
+        displayMode: CommunityDisplayMode.handle,
+      ),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('community-handle')), findsNothing);
+    repository.profileGate = null;
+    await tester.tap(find.text('Try again'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('community-handle')), findsOneWidget);
+    expect(
+      tester
+          .widget<TextFormField>(find.byKey(const ValueKey('community-handle')))
+          .controller!
+          .text,
+      'owner_handle',
+    );
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.byKey(const ValueKey('community-terms-consent')),
+          )
+          .value,
+      isTrue,
+    );
+    await tester.pumpWidget(const SizedBox());
+    auth.dispose();
+  });
+
+  testWidgets('slow block list preserves loaded profile and durable consent', (
+    tester,
+  ) async {
+    final repository = _BoundRepository('owner')
+      ..blockGate = Completer<Set<String>>();
+    final auth = _LiveAuth(uid: 'owner', emailVerified: true);
+    await pumpPage(tester, profile(auth, repository));
+    await tester.pump(const Duration(seconds: 21));
+    await tester.pump();
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byKey(const ValueKey('community-handle')), findsOneWidget);
+    expect(
+      tester
+          .widget<CheckboxListTile>(
+            find.byKey(const ValueKey('community-terms-consent')),
+          )
+          .value,
+      isTrue,
+    );
+    expect(find.text('You have not blocked anyone.'), findsNothing);
+    expect(find.textContaining('connection took too long'), findsOneWidget);
+    repository.blockGate!.complete({});
+    await tester.pumpWidget(const SizedBox());
+    auth.dispose();
+  });
+
+  testWidgets(
+    'timed-out old identity never replaces a newly signed-in account',
+    (tester) async {
+      final auth = _LiveAuth(uid: 'owner', emailVerified: true);
+      final old = _BoundRepository('owner')
+        ..profileGate = Completer<CommunityProfile?>();
+      final next = _BoundRepository('next');
+      await pumpPage(
+        tester,
+        profile(auth, old, repositories: {'owner': old, 'next': next}),
+      );
+      auth.publish(uid: 'next', emailVerified: true);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(seconds: 21));
+      old.profileGate!.complete(old.profileValue);
+      await tester.pump();
+      expect(
+        tester
+            .widget<TextFormField>(
+              find.byKey(const ValueKey('community-handle')),
+            )
+            .controller!
+            .text,
+        'next_handle',
+      );
+      expect(find.textContaining('connection took too long'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+      auth.dispose();
+    },
+  );
+
   for (final provider in ['apple.com', 'google.com', 'password']) {
     testWidgets(
       'same-UID $provider refresh loads private feed only after live trust resolves',
@@ -521,6 +623,7 @@ class _BoundRepository extends FakeCommunityRepository {
   int blockReads = 0;
   int get privateReads => profileReads + pendingReads + blockReads;
   Completer<CommunityProfile?>? profileGate;
+  Completer<Set<String>>? blockGate;
   Completer<List<CommunityComment>>? pendingGate;
   @override
   Future<CommunityProfile?> profile() async {
@@ -541,6 +644,7 @@ class _BoundRepository extends FakeCommunityRepository {
   @override
   Future<Set<String>> blockedUsers() async {
     blockReads++;
+    if (blockGate != null) return blockGate!.future;
     return Set.of(blocks);
   }
 }

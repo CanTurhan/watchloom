@@ -1,7 +1,30 @@
+import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watchloom/features/community/domain/community_submission.dart';
 
 void main() {
+  testWidgets(
+    'saved comment returns even when moderation wake-up never finishes',
+    (tester) async {
+      final gate = Completer<void>();
+      var calls = 0;
+      final pending = CommunitySubmission.requestModeration(
+        commentId: 'already-saved',
+        endpoint: Uri.parse('https://watchloom-community.example.workers.dev'),
+        request: (_, _) {
+          calls++;
+          return gate.future;
+        },
+      );
+      await tester.pump(const Duration(seconds: 16));
+      expect(await pending, 'already-saved');
+      expect(calls, 1);
+      gate.completeError(StateError('late network failure'));
+      await tester.pump();
+      expect(tester.takeException(), isNull);
+    },
+  );
+
   test(
     'wrong device clocks propose both window choices without local rejection',
     () {

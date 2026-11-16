@@ -10,6 +10,7 @@ import 'package:watchloom/features/community/domain/community_models.dart';
 import 'package:watchloom/features/community/domain/community_watch_context.dart';
 import 'package:watchloom/features/shows/domain/entities/tv_show.dart';
 import 'package:watchloom/features/community/domain/community_policy.dart';
+import 'package:watchloom/features/community/domain/community_read.dart';
 import 'package:watchloom/features/community/domain/community_repository.dart';
 import 'package:watchloom/features/community/presentation/community_access.dart';
 import 'package:watchloom/features/community/presentation/community_profile_page.dart';
@@ -229,7 +230,7 @@ class _CommunityPageState extends State<CommunityPage> {
       final errors = <Object>[];
       Future<T?> request<T>(Future<T> Function() read) async {
         try {
-          return await read();
+          return await CommunityRead.run('feedRead', read);
         } catch (error) {
           errors.add(error);
           return null;

@@ -8,6 +8,7 @@ import 'package:watchloom/features/account/presentation/auth_controller.dart';
 import 'package:watchloom/features/account/presentation/sign_in_page.dart';
 import 'package:watchloom/features/community/domain/community_models.dart';
 import 'package:watchloom/features/community/domain/community_policy.dart';
+import 'package:watchloom/features/community/domain/community_read.dart';
 import 'package:watchloom/features/community/domain/community_repository.dart';
 import 'package:watchloom/features/community/presentation/community_access.dart';
 import 'package:watchloom/features/community/presentation/community_strings.dart';
@@ -73,6 +74,8 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
   CommunityProfile? _profile;
   Set<String> _blocks = {};
   bool _loading = true;
+  bool _profileLoaded = false;
+  bool _blocksLoaded = false;
   bool _busy = false;
   bool _consent = false;
   String? _error;
@@ -174,6 +177,8 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
     _viewerUid = uid;
     _verified = verified;
     _profile = null;
+    _profileLoaded = false;
+    _blocksLoaded = false;
     _blocks = {};
     _handle.clear();
     _nickname.clear();
@@ -213,18 +218,51 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
       _error = null;
     });
     try {
+      final errors = <Object>[];
+      var profileLoaded = false, blocksLoaded = false;
+      Future<T?> read<T>(
+        String operation,
+        Future<T> Function() action,
+        void Function() loaded,
+      ) async {
+        try {
+          final value = await CommunityRead.run(operation, action);
+          loaded();
+          return value;
+        } catch (error) {
+          errors.add(error);
+          return null;
+        }
+      }
+
       final results = await Future.wait<Object?>([
-        repository.profile(),
-        repository.blockedUsers(),
+        read<CommunityProfile?>(
+          'profile',
+          repository.profile,
+          () => profileLoaded = true,
+        ),
+        read(
+          'blockedUsers',
+          repository.blockedUsers,
+          () => blocksLoaded = true,
+        ),
       ]);
       if (!_currentSession(revision) || ticket != _loadTicket) return;
       final profile = results[0] as CommunityProfile?;
       setState(() {
-        _profile = profile;
-        _blocks = results[1] as Set<String>;
-        _handle.text = profile?.handle ?? '';
-        _nickname.text = profile?.nickname ?? '';
-        _mode = profile?.displayMode ?? CommunityDisplayMode.handle;
+        _profileLoaded = profileLoaded;
+        _blocksLoaded = blocksLoaded;
+        if (profileLoaded) {
+          _profile = profile;
+          _handle.text = profile?.handle ?? '';
+          _nickname.text = profile?.nickname ?? '';
+          _mode = profile?.displayMode ?? CommunityDisplayMode.handle;
+          _consent = profile?.acceptedTerms ?? false;
+        }
+        if (blocksLoaded) _blocks = results[1] as Set<String>;
+        if (errors.isNotEmpty) {
+          _error = CommunityStrings.of(context).failure(errors.first);
+        }
       });
     } catch (error) {
       if (_currentSession(revision) && ticket == _loadTicket) {
@@ -242,6 +280,7 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
     final revision = _revision, repository = _repository;
     if (_busy ||
         !_canParticipate ||
+        !_profileLoaded ||
         repository == null ||
         !(_form.currentState?.validate() ?? false)) {
       return;
@@ -382,171 +421,171 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    if (_profile == null)
-                      TextButton(
-                        onPressed: _busy ? null : _load,
-                        child: Text(s.retry),
-                      ),
+                    TextButton(
+                      onPressed: _busy ? null : _load,
+                      child: Text(s.retry),
+                    ),
                   ],
-                  Form(
-                    key: _form,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        TextFormField(
-                          key: const ValueKey('community-handle'),
-                          controller: _handle,
-                          readOnly: _profile != null,
-                          enabled: !_busy,
-                          autocorrect: false,
-                          enableSuggestions: false,
-                          textCapitalization: TextCapitalization.none,
-                          textInputAction: TextInputAction.next,
-                          maxLength: 20,
-                          decoration: InputDecoration(
-                            labelText: s.handle,
-                            prefixText: '@',
-                            helperText: s.handleHelp,
-                            helperMaxLines: 4,
-                            suffixIcon: _profile != null
-                                ? const Icon(
-                                    Icons.lock_outline_rounded,
-                                    size: 18,
-                                  )
+                  if (_profileLoaded)
+                    Form(
+                      key: _form,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          TextFormField(
+                            key: const ValueKey('community-handle'),
+                            controller: _handle,
+                            readOnly: _profile != null,
+                            enabled: !_busy,
+                            autocorrect: false,
+                            enableSuggestions: false,
+                            textCapitalization: TextCapitalization.none,
+                            textInputAction: TextInputAction.next,
+                            maxLength: 20,
+                            decoration: InputDecoration(
+                              labelText: s.handle,
+                              prefixText: '@',
+                              helperText: s.handleHelp,
+                              helperMaxLines: 4,
+                              suffixIcon: _profile != null
+                                  ? const Icon(
+                                      Icons.lock_outline_rounded,
+                                      size: 18,
+                                    )
+                                  : null,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                            validator: (value) =>
+                                RegExp(r'^[a-z][a-z0-9_]{2,19}$').hasMatch(
+                                  CommunityPolicy.normalizeHandle(value ?? ''),
+                                )
+                                ? null
+                                : s.handleHelp,
+                          ),
+                          const SizedBox(height: 18),
+                          TextFormField(
+                            key: const ValueKey('community-nickname'),
+                            controller: _nickname,
+                            enabled: !_busy,
+                            maxLength: 24,
+                            decoration: InputDecoration(
+                              labelText: s.nickname,
+                              helperText: s.nicknameHelp,
+                              helperMaxLines: 3,
+                            ),
+                            onChanged: (_) => setState(() {}),
+                            validator: (value) =>
+                                _mode == CommunityDisplayMode.nickname &&
+                                    (value?.trim().length ?? 0) < 3
+                                ? s.nicknameHelp
                                 : null,
                           ),
-                          onChanged: (_) => setState(() {}),
-                          validator: (value) =>
-                              RegExp(r'^[a-z][a-z0-9_]{2,19}$').hasMatch(
-                                CommunityPolicy.normalizeHandle(value ?? ''),
-                              )
-                              ? null
-                              : s.handleHelp,
-                        ),
-                        const SizedBox(height: 18),
-                        TextFormField(
-                          key: const ValueKey('community-nickname'),
-                          controller: _nickname,
-                          enabled: !_busy,
-                          maxLength: 24,
-                          decoration: InputDecoration(
-                            labelText: s.nickname,
-                            helperText: s.nicknameHelp,
-                            helperMaxLines: 3,
+                          const SizedBox(height: 20),
+                          Text(
+                            s.displayAs,
+                            style: Theme.of(context).textTheme.titleMedium,
                           ),
-                          onChanged: (_) => setState(() {}),
-                          validator: (value) =>
-                              _mode == CommunityDisplayMode.nickname &&
-                                  (value?.trim().length ?? 0) < 3
-                              ? s.nicknameHelp
-                              : null,
-                        ),
-                        const SizedBox(height: 20),
-                        Text(
-                          s.displayAs,
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                        const SizedBox(height: 12),
-                        RadioGroup<CommunityDisplayMode>(
-                          groupValue: _mode,
-                          onChanged: (value) {
-                            if (!_busy && value != null) {
-                              setState(() => _mode = value);
-                            }
-                          },
-                          child: Column(
-                            children: [
-                              RadioListTile<CommunityDisplayMode>(
-                                value: CommunityDisplayMode.handle,
-                                title: Text(s.handle),
-                                subtitle: Text(
-                                  _handle.text.isEmpty
-                                      ? '@username'
-                                      : '@${CommunityPolicy.normalizeHandle(_handle.text)}',
-                                ),
-                              ),
-                              RadioListTile<CommunityDisplayMode>(
-                                value: CommunityDisplayMode.nickname,
-                                title: Text(s.nickname),
-                                subtitle: Text(
-                                  _nickname.text.trim().isEmpty
-                                      ? s.nicknameHelp
-                                      : _nickname.text.trim(),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Card(
-                          child: Padding(
-                            padding: const EdgeInsets.all(18),
+                          const SizedBox(height: 12),
+                          RadioGroup<CommunityDisplayMode>(
+                            groupValue: _mode,
+                            onChanged: (value) {
+                              if (!_busy && value != null) {
+                                setState(() => _mode = value);
+                              }
+                            },
                             child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  s.preview,
-                                  style: const TextStyle(
-                                    color: AppColors.textSecondary,
-                                    fontSize: 12,
+                                RadioListTile<CommunityDisplayMode>(
+                                  value: CommunityDisplayMode.handle,
+                                  title: Text(s.handle),
+                                  subtitle: Text(
+                                    _handle.text.isEmpty
+                                        ? '@username'
+                                        : '@${CommunityPolicy.normalizeHandle(_handle.text)}',
                                   ),
                                 ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  _mode == CommunityDisplayMode.nickname
-                                      ? (_nickname.text.trim().isEmpty
-                                            ? s.nickname
-                                            : _nickname.text.trim())
-                                      : (_handle.text.isEmpty
-                                            ? '@username'
-                                            : '@${CommunityPolicy.normalizeHandle(_handle.text)}'),
-                                  key: const ValueKey(
-                                    'community-public-name-preview',
+                                RadioListTile<CommunityDisplayMode>(
+                                  value: CommunityDisplayMode.nickname,
+                                  title: Text(s.nickname),
+                                  subtitle: Text(
+                                    _nickname.text.trim().isEmpty
+                                        ? s.nicknameHelp
+                                        : _nickname.text.trim(),
                                   ),
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
                                 ),
                               ],
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        CheckboxListTile(
-                          key: const ValueKey('community-terms-consent'),
-                          value: _consent,
-                          onChanged: _busy
-                              ? null
-                              : (value) =>
-                                    setState(() => _consent = value ?? false),
-                          controlAffinity: ListTileControlAffinity.leading,
-                          contentPadding: EdgeInsets.zero,
-                          title: Text(
-                            s.acceptTerms,
-                            style: const TextStyle(fontSize: 13, height: 1.5),
-                          ),
-                        ),
-                        TextButton(
-                          onPressed: () => openCommunityGuidelines(context),
-                          child: Text(s.guidelines),
-                        ),
-                        const SizedBox(height: 12),
-                        FilledButton.icon(
-                          key: const ValueKey('community-save-identity'),
-                          onPressed: _busy || !_consent ? null : _save,
-                          icon: _busy
-                              ? const SizedBox.square(
-                                  dimension: 18,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
+                          const SizedBox(height: 12),
+                          Card(
+                            child: Padding(
+                              padding: const EdgeInsets.all(18),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    s.preview,
+                                    style: const TextStyle(
+                                      color: AppColors.textSecondary,
+                                      fontSize: 12,
+                                    ),
                                   ),
-                                )
-                              : const Icon(Icons.check_rounded),
-                          label: Text(s.save),
-                        ),
-                      ],
+                                  const SizedBox(height: 8),
+                                  Text(
+                                    _mode == CommunityDisplayMode.nickname
+                                        ? (_nickname.text.trim().isEmpty
+                                              ? s.nickname
+                                              : _nickname.text.trim())
+                                        : (_handle.text.isEmpty
+                                              ? '@username'
+                                              : '@${CommunityPolicy.normalizeHandle(_handle.text)}'),
+                                    key: const ValueKey(
+                                      'community-public-name-preview',
+                                    ),
+                                    style: Theme.of(
+                                      context,
+                                    ).textTheme.titleMedium,
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          CheckboxListTile(
+                            key: const ValueKey('community-terms-consent'),
+                            value: _consent,
+                            onChanged: _busy
+                                ? null
+                                : (value) =>
+                                      setState(() => _consent = value ?? false),
+                            controlAffinity: ListTileControlAffinity.leading,
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              s.acceptTerms,
+                              style: const TextStyle(fontSize: 13, height: 1.5),
+                            ),
+                          ),
+                          TextButton(
+                            onPressed: () => openCommunityGuidelines(context),
+                            child: Text(s.guidelines),
+                          ),
+                          const SizedBox(height: 12),
+                          FilledButton.icon(
+                            key: const ValueKey('community-save-identity'),
+                            onPressed: _busy || !_consent ? null : _save,
+                            icon: _busy
+                                ? const SizedBox.square(
+                                    dimension: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  )
+                                : const Icon(Icons.check_rounded),
+                            label: Text(s.save),
+                          ),
+                        ],
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 32),
                   Text(
                     s.blockedAccounts,
@@ -562,7 +601,7 @@ class _CommunityProfilePageState extends State<CommunityProfilePage> {
                     ),
                   ),
                   const SizedBox(height: 12),
-                  if (_blocks.isEmpty)
+                  if (_blocksLoaded && _blocks.isEmpty)
                     Text(
                       s.noBlocks,
                       style: const TextStyle(color: AppColors.textSecondary),

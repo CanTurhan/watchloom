@@ -233,6 +233,10 @@ class CommunityStrings {
   String failure(Object error) {
     if (error is! CommunityException) return unavailable;
     return switch (error.failure) {
+      CommunityFailure.timedOut => text(
+        'The connection took too long. Check your connection and try again. Your saved community identity and consent are unchanged.',
+        'Bağlantı zamanında yanıt vermedi. Bağlantını kontrol edip tekrar dene. Kayıtlı topluluk kimliğin ve onayın korunuyor.',
+      ),
       CommunityFailure.conflict => text(
         'This comment changed elsewhere. Refresh before editing again.',
         'Bu yorum başka bir yerde değişti. Yenileyip tekrar düzenle.',

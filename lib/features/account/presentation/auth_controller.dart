@@ -12,7 +12,28 @@ import 'package:watchloom/firebase_options.dart';
 
 class AuthController extends ChangeNotifier with WidgetsBindingObserver {
   factory AuthController.guestOnly() => AuthController._(null, null);
-  AuthController._(this.auth, this._google);
+  AuthController._(
+    this.auth,
+    this._google, {
+    this.slowOperationAfter = const Duration(seconds: 45),
+  });
+
+  @visibleForTesting
+  factory AuthController.withAuth(
+    FirebaseAuth auth, {
+    Duration slowOperationAfter = const Duration(seconds: 45),
+  }) => AuthController._(auth, null, slowOperationAfter: slowOperationAfter);
+
+  final Duration slowOperationAfter;
+  static const _sessionTimeout = Duration(seconds: 15);
+  Timer? _operationTimer;
+  bool operationSlow = false;
+  bool _disposed = false;
+  bool _refreshingSession = false;
+  void _notify() {
+    if (!_disposed) notifyListeners();
+  }
+
   final FirebaseAuth? auth;
   final GoogleSignIn? _google;
   StreamSubscription<User?>? _subscription;
@@ -66,17 +87,19 @@ class AuthController extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> _refreshTokenIdentity() async {
     final generation = ++_tokenGeneration;
     final current = user;
-    _tokenOwner = null;
-    _signInProvider = null;
+    if (_tokenOwner != current?.uid) {
+      _tokenOwner = null;
+      _signInProvider = null;
+    }
     try {
-      final token = await current?.getIdTokenResult();
+      final token = await current?.getIdTokenResult().timeout(_sessionTimeout);
       if (generation != _tokenGeneration || user?.uid != current?.uid) return;
       _tokenOwner = current?.uid;
       _signInProvider = token?.signInProvider;
     } catch (_) {
       /* Verified email still works offline; no local entitlement. */
     }
-    if (generation == _tokenGeneration) notifyListeners();
+    if (generation == _tokenGeneration) _notify();
   }
 
   @override
@@ -90,14 +113,17 @@ class AuthController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _refreshSession() async {
+    if (_refreshingSession || _disposed) return;
+    _refreshingSession = true;
     final previous = user;
     try {
-      await previous?.reload();
+      await previous?.reload().timeout(_sessionTimeout);
       if (user?.uid == previous?.uid) {
-        await user?.getIdToken(true);
+        await user?.getIdToken(true).timeout(_sessionTimeout);
         await _refreshTokenIdentity();
       }
     } on FirebaseAuthException catch (error) {
+      if (_disposed || user?.uid != previous?.uid) return;
       if (error.code == 'user-not-found') lastDeletedUserId = previous?.uid;
       if ([
         'user-not-found',
@@ -110,28 +136,44 @@ class AuthController extends ChangeNotifier with WidgetsBindingObserver {
       // Network failures preserve the existing offline session.
     } catch (_) {
       /* Keep the offline session. */
+    } finally {
+      _refreshingSession = false;
     }
   }
 
   Future<bool> _run(Future<void> Function() action) async {
-    if (busy || !available) return false;
+    if (_disposed || busy || !available) return false;
     busy = true;
+    operationSlow = false;
     errorCode = null;
-    notifyListeners();
+    // A native provider sheet/Firebase write cannot be cancelled by timing out
+    // its Dart Future. Keep the operation lock until the real result arrives.
+    _operationTimer = Timer(slowOperationAfter, () {
+      if (_disposed || !busy) return;
+      operationSlow = true;
+      errorCode = 'operation-pending';
+      debugPrint('auth operation=pending code=slow-operation');
+      _notify();
+    });
+    _notify();
     try {
       await action();
+      if (errorCode == 'operation-pending') errorCode = null;
       return true;
     } on FirebaseAuthException catch (error) {
       errorCode = error.code;
     } on PlatformException catch (error) {
-      if (!['sign_in_canceled', 'canceled'].contains(error.code)) {
-        errorCode = 'provider-error';
-      }
+      errorCode = ['sign_in_canceled', 'canceled'].contains(error.code)
+          ? null
+          : 'provider-error';
     } catch (_) {
       errorCode = 'network-request-failed';
     } finally {
+      _operationTimer?.cancel();
+      _operationTimer = null;
       busy = false;
-      notifyListeners();
+      operationSlow = false;
+      _notify();
     }
     return false;
   }
@@ -174,10 +216,14 @@ class AuthController extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<bool> google({bool link = false}) => _run(() async {
+    final owner = user;
     final credential = await _googleCredential();
     if (credential == null) return;
     if (link) {
-      await user!.linkWithCredential(credential);
+      if (owner == null || user?.uid != owner.uid) {
+        throw FirebaseAuthException(code: 'user-mismatch');
+      }
+      await owner.linkWithCredential(credential);
     } else {
       await auth!.signInWithCredential(credential);
     }
@@ -211,8 +257,16 @@ class AuthController extends ChangeNotifier with WidgetsBindingObserver {
   });
 
   Future<bool> refreshUser() => _run(() async {
-    await user!.reload();
-    await user!.getIdToken(true);
+    final owner = user;
+    if (owner == null) throw FirebaseAuthException(code: 'user-mismatch');
+    await owner.reload().timeout(_sessionTimeout);
+    if (user?.uid != owner.uid) {
+      throw FirebaseAuthException(code: 'user-mismatch');
+    }
+    await user!.getIdToken(true).timeout(_sessionTimeout);
+    if (user?.uid != owner.uid) {
+      throw FirebaseAuthException(code: 'user-mismatch');
+    }
     await _refreshTokenIdentity();
   });
 
@@ -276,6 +330,9 @@ class AuthController extends ChangeNotifier with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    _disposed = true;
+    _tokenGeneration++;
+    _operationTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     _subscription?.cancel();
     super.dispose();
