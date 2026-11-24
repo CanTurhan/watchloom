@@ -127,6 +127,13 @@ test('Spark automatic series/movie community and vote security rules', {timeout:
       for (const provider of providers) for (const contentKind of ['series', 'movie']) {
         await matrix.test(`${provider} / ${contentKind}: create, reply, owner edit/delete and all-provider up/down votes`, async () => {
           const identity = await providerUser(provider);
+          // Client tokens may neither trigger operator provider tests nor forge
+          // their readiness proofs, regardless of sign-in provider.
+          for (const privatePath of ['communityAutomation/verificationRequest', 'communityAutomation/queueVerification']) {
+            assert.equal((await read(privatePath, identity.token)).status, 403);
+            assert.equal((await write(privatePath, {ready: true, state: 'pending'}, identity.token)).status, 403);
+            assert.equal((await write(privatePath, {ready: true})).status, 403);
+          }
           // An old Auth account without an application root can bootstrap.
           await db.doc(`users/${identity.uid}`).delete();
           assert.equal((await read(`deletionMarkers/${identity.uid}`, identity.token)).status, 404);
@@ -185,14 +192,21 @@ test('Spark automatic series/movie community and vote security rules', {timeout:
           assert.equal((await commit(await voteWrites(voter, target, 1), voter.token)).status, 200);
           await resetPost(identity);
           const editWrites = async () => [update(commentPath,
-            {body: 'Updated comment', isSpoiler: false, status: 'pending', editRevision: 1},
+            {body: 'Updated comment', isSpoiler: false, status: 'pending', editRevision: 1,
+              policyVersion: '2026-11-06-auto-v1'},
             {patch: true, timestamps: ['editedAt', 'moderationNextAt']}),
             await counterWrite(identity, 'Post', target)];
           await db.doc(path).update({acceptedPolicyVersion: '2026-11-05'});
           assert.equal((await commit(await editWrites(), identity.token)).status, 403);
           assert.equal((await renew()).status, 200);
+          // Legacy comments must be upgraded only when their owner submits an edit.
+          await db.doc(commentPath).update({policyVersion: '2026-11-05'});
+          const wrongPolicy = await editWrites();
+          wrongPolicy[0].update.fields.policyVersion = value('future-policy');
+          assert.equal((await commit(wrongPolicy, identity.token)).status, 403);
           assert.equal((await commit(await editWrites(), identity.token)).status, 200);
           const edited = (await db.doc(commentPath).get()).data();
+          assert.equal(edited.policyVersion, '2026-11-06-auto-v1');
           assert.deepEqual([edited.status, edited.editRevision, edited.upVotes, edited.downVotes, edited.score],
             ['pending', 1, 1, 0, 1]);
           assert.equal((await read(commentPath)).status, 403);

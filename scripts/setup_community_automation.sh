@@ -17,7 +17,7 @@ if ! "${watchloom_wrangler[@]}" whoami --json > /dev/null; then
   exit 1
 fi
 watchloom_phase='local server/security checks'
-node --test server/community-worker/test/*.test.mjs scripts/community_automation_test.cjs scripts/community_diagnostics_test.cjs scripts/community_worker_client_test.cjs
+node --test server/community-worker/test/*.test.mjs scripts/community_automation_test.cjs scripts/community_diagnostics_test.cjs scripts/community_worker_client_test.cjs scripts/community_queue_verification_test.cjs
 bash scripts/test_worker_runtime.sh
 python3 -m unittest discover -s scripts -p 'test_*.py'
 watchloom_phase='emulator-tested Spark rules and indexes'

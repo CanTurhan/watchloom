@@ -2,6 +2,7 @@ import {PROJECT, POLICY, RELEASE, commentId, trustedAuthor} from './policy.mjs';
 import {ServiceError, account, limitedText, verifyToken} from './google.mjs';
 import {ModerationService} from './moderation.mjs';
 import {verifySetup} from './setup.mjs';
+import {verifyScheduledRequest} from './scheduled_verification.mjs';
 
 const response = (body, status = 200) => new Response(JSON.stringify(body), {status, headers: {
   'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store', 'X-Content-Type-Options': 'nosniff'}});
@@ -46,7 +47,13 @@ export default {
   async scheduled(_event, env, context) {
     const service = new ModerationService(env);
     const maintenance = Math.floor(Date.now() / 60000) % 10 === 0;
-    context.waitUntil((maintenance ? service.maintain() : service.next()).catch(() => {
+    context.waitUntil((async () => {
+      // A failed operator check must not stop normal moderation queue work.
+      // A synthetic operator check takes its own invocation, staying within
+      // Workers Free's subrequest limit. Normal jobs resume on the next tick.
+      try { if (await verifyScheduledRequest(env)) return; } catch { /* No private errors logged. */ }
+      await (maintenance ? service.maintain() : service.next());
+    })().catch(() => {
       // No request bodies, bearer tokens, identities or provider errors logged.
     }));
   },

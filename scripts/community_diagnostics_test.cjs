@@ -1,7 +1,7 @@
 'use strict';
 const {test} = require('node:test');
 const assert = require('node:assert/strict');
-const {safeProviderCode, safeNetworkCode, publicNetworkDetails, networkEnvironment} = require('./community_diagnostics.cjs');
+const {safeProviderCode, safeNetworkCode, publicNetworkDetails, networkEnvironment, hostnameTlsDiagnosis} = require('./community_diagnostics.cjs');
 test('diagnostics expose only whitelisted provider codes, never messages, identifiers or tokens', () => {
   const secret = 'private-token-do-not-print';
   assert.equal(safeProviderCode({error: {code: 'insufficient_quota', message: secret}}), 'insufficient_quota');
@@ -27,11 +27,27 @@ test('index readiness is reported without its creation URL and malformed details
   assert.equal(safeProviderCode({error: {details: {find: 'private'}, message: 'hidden'}}), 'UPSTREAM_ERROR');
 });
 test('TLS, aggregate network failures and rejected redirects expose only fixed codes', () => {
+  assert.equal(safeNetworkCode({code: 'ERR_SSL_WRONG_VERSION_NUMBER', message: 'private'}), 'ERR_SSL_WRONG_VERSION_NUMBER');
   assert.equal(safeNetworkCode({cause: {code: 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE'}}), 'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE');
   assert.equal(safeNetworkCode({cause: {errors: [{code: 'ENETUNREACH'}]}}), 'ENETUNREACH');
   assert.equal(safeNetworkCode({cause: {message: 'unexpected redirect'}}), 'REDIRECT_REJECTED');
   assert.equal(safeNetworkCode({code: 'CURL_35'}), 'CURL_35');
   assert.equal(safeNetworkCode({cause: {code: 'sk-private-key', message: 'private token'}}), 'NETWORK_ERROR');
+});
+test('TLS comparison separates a Workers-domain route failure from a single hostname failure', () => {
+  const row = (stage, status) => ({stage, status});
+  const control = row('tls_control_same_address', 'passed');
+  const worker = row('tls_worker_same_address', 'failed');
+  assert.equal(hostnameTlsDiagnosis([control, worker, row('tls_workers_domain_same_address', 'failed')]), 'workers_domain_tls_route_failure');
+  assert.equal(hostnameTlsDiagnosis([control, worker, row('tls_workers_domain_same_address', 'passed')]), 'worker_hostname_tls_route_failure');
+  assert.equal(hostnameTlsDiagnosis([control, row('tls_worker_same_address', 'passed')]), 'worker_tls_same_address_verified');
+});
+test('failed or missing control handshakes never claim that DNS or a provider is the cause', () => {
+  for (const rows of [[], [{stage: 'tls_worker_same_address', status: 'failed'}],
+    [{stage: 'tls_control_same_address', status: 'failed'}, {stage: 'tls_worker_same_address', status: 'failed'}],
+    [{stage: 'tls_control_same_address', status: 'passed'}]]) {
+    assert.equal(hostnameTlsDiagnosis(rows), 'tls_route_comparison_inconclusive');
+  }
 });
 test('public network error details remove proxy credentials, tokens and control characters', () => {
   const text = JSON.stringify(publicNetworkDetails({message: 'write EPROTO https://user:password@proxy.test/path\n',

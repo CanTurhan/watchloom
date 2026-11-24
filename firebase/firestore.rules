@@ -104,7 +104,8 @@ service cloud.firestore {
     function editWrite(uid, id, before, after) {
       return owns(before.authorUid) && active(uid) && communityReady()
         && validContent(after) && validWatchContext(after)
-        && after.diff(before).affectedKeys().hasOnly(['body', 'isSpoiler', 'status', 'editedAt', 'editRevision', 'moderationNextAt'])
+        && after.diff(before).affectedKeys().hasOnly(['body', 'isSpoiler', 'status', 'editedAt', 'editRevision', 'moderationNextAt', 'policyVersion'])
+        && after.policyVersion == '2026-11-06-auto-v1'
         && (after.body != before.body || after.isSpoiler != before.isSpoiler)
         && safeBody(after.body) && after.isSpoiler is bool && after.status == 'pending'
         && after.editedAt == request.time && after.moderationNextAt == request.time

@@ -1,5 +1,11 @@
 import 'community_models.dart';
 
+/// Optional private-feed invalidation. Only the bound user's pending/rejected
+/// submissions are observed; publication still comes from the approved feed.
+abstract interface class CommunityModerationUpdates {
+  Stream<void> moderationUpdates({required String contentKey});
+}
+
 abstract interface class CommunityRepository {
   Future<CommunityAvailability> availability();
   Future<CommunityProfile?> profile();

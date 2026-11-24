@@ -8,7 +8,8 @@ import '../domain/community_submission.dart';
 import '../domain/community_read.dart';
 import 'community_vote_transaction.dart';
 
-class FirestoreCommunityRepository implements CommunityRepository {
+class FirestoreCommunityRepository
+    implements CommunityRepository, CommunityModerationUpdates {
   FirestoreCommunityRepository({
     required this.firestore,
     required this.uid,
@@ -46,14 +47,25 @@ class FirestoreCommunityRepository implements CommunityRepository {
     }
   }
 
-  Future<void> _prepareOwner() async {
+  Future<void> _prepareOwner({bool refreshSession = false}) async {
+    if (refreshSession) {
+      await _guard(
+        'refreshWriteSession',
+        () => CommunityRead.run(
+          'prepareSession',
+          () => prepareSession?.call() ?? Future<void>.value(),
+        ),
+      );
+    }
     final previous = _bootstrap;
     if (previous != null) return previous;
     final pending = _guard('sessionAndBootstrap', () async {
-      await CommunityRead.run(
-        'prepareSession',
-        () => prepareSession?.call() ?? Future<void>.value(),
-      );
+      if (!refreshSession) {
+        await CommunityRead.run(
+          'prepareSession',
+          () => prepareSession?.call() ?? Future<void>.value(),
+        );
+      }
       await _guard(
         'accountBootstrap',
         () => FirestoreAccountStore(firestore, _owner).bootstrap(),
@@ -65,6 +77,21 @@ class FirestoreCommunityRepository implements CommunityRepository {
     } catch (_) {
       if (identical(_bootstrap, pending)) _bootstrap = null;
       rethrow;
+    }
+  }
+
+  Future<T> _transactionRead<T>(
+    String operation,
+    Future<T> Function() read,
+  ) async {
+    try {
+      return await read();
+    } on FirebaseException catch (error) {
+      if (error.code != 'permission-denied') rethrow;
+      // Preserve SDK transaction retries for aborted/transient reads. Only a
+      // definitive read denial is separated from an atomic commit denial.
+      debugPrint('community operation=$operation code=permission-denied');
+      throw const CommunityException(CommunityFailure.permissionDenied);
     }
   }
 
@@ -108,7 +135,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
     if (!acceptedTerms) {
       throw const CommunityException(CommunityFailure.termsRequired);
     }
-    await _prepareOwner();
+    await _prepareOwner(refreshSession: true);
     final identity = CommunityPolicy.identity(
       handle: handle,
       nickname: nickname,
@@ -219,6 +246,25 @@ class FirestoreCommunityRepository implements CommunityRepository {
   });
 
   @override
+  Stream<void> moderationUpdates({required String contentKey}) async* {
+    await _prepareOwner();
+    CommunityPolicy.content(
+      contentKey,
+      contentKey.startsWith('imdb:movie:')
+          ? CommunityContentKind.movie
+          : CommunityContentKind.series,
+    );
+    yield* _comments
+        .where('authorUid', isEqualTo: _owner)
+        .where('contentKey', isEqualTo: contentKey)
+        .where('status', whereIn: ['pending', 'rejected'])
+        .orderBy('createdAt', descending: true)
+        .limit(50)
+        .snapshots()
+        .map((_) {});
+  }
+
+  @override
   Future<String> post({
     required String contentKey,
     CommunityContentKind contentKind = CommunityContentKind.series,
@@ -233,15 +279,23 @@ class FirestoreCommunityRepository implements CommunityRepository {
     if (!available.canPost) {
       throw const CommunityException(CommunityFailure.unavailable);
     }
-    await _prepareOwner();
+    await _prepareOwner(refreshSession: true);
     final owner = _owner, profileRef = _profile(_owner), ref = _comments.doc();
-    await CommunitySubmission.attempt(
+    Map<String, dynamic>? counterData;
+    await _counterSubmission(
+      operation: 'post.commit',
+      kind: 'Post',
+      data: () => counterData,
       submit: (alternate) => firestore.runTransaction((tx) async {
-        final identity = await tx.get(profileRef);
+        final identity = await _transactionRead(
+          'post.profileRead',
+          () => tx.get(profileRef),
+        );
         if (!identity.exists) {
           throw const CommunityException(CommunityFailure.identityRequired);
         }
         final data = identity.data()!;
+        counterData = data;
         if (!_identity(data).acceptedTerms) {
           throw const CommunityException(CommunityFailure.termsRequired);
         }
@@ -249,7 +303,10 @@ class FirestoreCommunityRepository implements CommunityRepository {
           if (!RegExp(r'^[A-Za-z0-9]{20}$').hasMatch(parentId)) {
             throw const CommunityException(CommunityFailure.invalidContent);
           }
-          final parent = (await tx.get(_comments.doc(parentId))).data();
+          final parent = (await _transactionRead(
+            'post.parentRead',
+            () => tx.get(_comments.doc(parentId)),
+          )).data();
           if (parent == null ||
               parent['contentKey'] != contentKey ||
               parent['status'] != 'approved' ||
@@ -279,7 +336,6 @@ class FirestoreCommunityRepository implements CommunityRepository {
         });
         tx.update(profileRef, _counter(data, 'Post', ref.id, alternate));
       }),
-      canRetry: _counterDenied,
     );
     return CommunitySubmission.requestModeration(
       commentId: ref.id,
@@ -290,7 +346,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
 
   @override
   Future<void> deleteComment(String id) => _guard('deleteComment', () async {
-    await _prepareOwner();
+    await _prepareOwner(refreshSession: true);
     await _comments.doc(id).delete();
   });
 
@@ -309,12 +365,23 @@ class FirestoreCommunityRepository implements CommunityRepository {
     if (!available.canPost) {
       throw const CommunityException(CommunityFailure.unavailable);
     }
-    await _prepareOwner();
+    await _prepareOwner(refreshSession: true);
     final profileRef = _profile(_owner), ref = _comments.doc(comment.id);
-    await CommunitySubmission.attempt(
+    Map<String, dynamic>? counterData;
+    await _counterSubmission(
+      operation: 'editComment.commit',
+      kind: 'Post',
+      data: () => counterData,
       submit: (alternate) => firestore.runTransaction((tx) async {
-        final profile = await tx.get(profileRef);
-        final current = (await tx.get(ref)).data();
+        final profile = await _transactionRead(
+          'editComment.profileRead',
+          () => tx.get(profileRef),
+        );
+        final current = (await _transactionRead(
+          'editComment.commentRead',
+          () => tx.get(ref),
+        )).data();
+        counterData = profile.data();
         if (current == null ||
             current['authorUid'] != _owner ||
             current['contentKey'] != comment.contentKey) {
@@ -330,6 +397,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
           'body': text,
           'isSpoiler': isSpoiler,
           'status': 'pending',
+          'policyVersion': CommunityPolicy.termsVersion,
           'editedAt': FieldValue.serverTimestamp(),
           'editRevision': comment.editRevision + 1,
           'moderationNextAt': FieldValue.serverTimestamp(),
@@ -339,7 +407,6 @@ class FirestoreCommunityRepository implements CommunityRepository {
           _counter(profile.data()!, 'Post', ref.id, alternate),
         );
       }),
-      canRetry: _counterDenied,
     );
     await CommunitySubmission.requestModeration(
       commentId: ref.id,
@@ -353,13 +420,21 @@ class FirestoreCommunityRepository implements CommunityRepository {
     required String commentId,
     required CommunityReportReason reason,
   }) => _guard('report', () async {
-    await _prepareOwner();
+    await _prepareOwner(refreshSession: true);
     final owner = _owner;
     final ref = firestore.collection('communityReports').doc();
     final profileRef = _profile(owner);
-    await CommunitySubmission.attempt(
+    Map<String, dynamic>? counterData;
+    await _counterSubmission(
+      operation: 'report.commit',
+      kind: 'Report',
+      data: () => counterData,
       submit: (alternate) => firestore.runTransaction((tx) async {
-        final identity = await tx.get(profileRef);
+        final identity = await _transactionRead(
+          'report.profileRead',
+          () => tx.get(profileRef),
+        );
+        counterData = identity.data();
         if (!identity.exists) {
           throw const CommunityException(CommunityFailure.identityRequired);
         }
@@ -383,7 +458,6 @@ class FirestoreCommunityRepository implements CommunityRepository {
           _counter(identity.data()!, 'Report', ref.id, alternate),
         );
       }),
-      canRetry: _counterDenied,
     );
   });
 
@@ -474,7 +548,7 @@ class FirestoreCommunityRepository implements CommunityRepository {
   @override
   Future<void> setVote({required String commentId, required int value}) =>
       _guard('setVote', () async {
-        await _prepareOwner();
+        await _prepareOwner(refreshSession: true);
         await CommunityVoteTransaction.apply(
           firestore: firestore,
           uid: _owner,
@@ -522,6 +596,42 @@ class FirestoreCommunityRepository implements CommunityRepository {
 
   static bool _counterDenied(Object error) =>
       error is FirebaseException && error.code == 'permission-denied';
+
+  Future<void> _counterSubmission({
+    required String operation,
+    required String kind,
+    required Map<String, dynamic>? Function() data,
+    required Future<void> Function(bool alternate) submit,
+  }) async {
+    try {
+      await CommunitySubmission.attempt(
+        submit: submit,
+        canRetry: _counterDenied,
+      );
+    } on FirebaseException catch (error) {
+      // No raw SDK messages, identifiers, tokens or comment text.
+      debugPrint('community operation=$operation code=${error.code}');
+      if (error.code != 'permission-denied') rethrow;
+      final observed = data();
+      final prefix = kind == 'Post' ? 'post' : 'report';
+      final lastAt = observed?['last${kind}At'];
+      final windowAt = observed?['${prefix}WindowAt'];
+      final count = observed?['${prefix}sInWindow'];
+      final failure =
+          lastAt is Timestamp && windowAt is Timestamp && count is int
+          ? CommunitySubmission.deniedFailure(
+              lastAt: lastAt.toDate(),
+              windowAt: windowAt.toDate(),
+              count: count,
+              now: DateTime.now().toUtc(),
+              cooldown: Duration(seconds: kind == 'Post' ? 30 : 60),
+              maximum: kind == 'Post' ? 20 : 5,
+            )
+          : CommunityFailure.permissionDenied;
+      debugPrint('community operation=$operation result=${failure.name}');
+      throw CommunityException(failure);
+    }
+  }
 
   static Map<String, dynamic> _counter(
     Map<String, dynamic> data,

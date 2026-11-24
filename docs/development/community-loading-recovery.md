@@ -48,6 +48,16 @@ bilgiler yerine yalnız sabit işlem adları ve hata kodları loglanır.
 
 ## Worker TLS hâlâ açık
 
+2026-11-18 devam incelemesi ve aynı IP üzerinde doğrulanmış TLS karşılaştırması:
+[Worker TLS incelemesi](community-worker-tls.md). Sonuç alan adına göre değişen
+erişim yolunu destekliyor; uygulama sertifika denetimi gevşetilmedi.
+
+Aynı gün sonraki çözümde HTTP hızlandırma çağrısı arka plana alındı, bağlı
+kullanıcının moderasyon durumu Firestore'dan canlı izleniyor ve yayımlanan
+Worker'ın gerçek cron'u üzerinden sağlayıcı hazırlığı başarıyla doğrulandı.
+Doğrudan workers.dev TLS engeli sürüyor; yorum kaydı/geri bildirimi bu bağlantıya
+bağımlı değil. Ayrıntılar ve güncel test sonuçları bağlantılı raporun sonundadır.
+
 Mevcut ağda Worker DNS çözülüyor fakat Node ve sistem curl HTTPS/TLS
 bağlantısında `EPROTO` / `CURL_35` alıyor. Daha önce farklı ağda aynı Worker'a
 TLS 1.3 ve HTTP 200 ile erişilmiş olması ağ yolunun etkili olduğunu gösterir;

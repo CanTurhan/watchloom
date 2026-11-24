@@ -11,6 +11,7 @@ const config :Workerd.Config = (
         (name = "src/policy.mjs", esModule = embed "../../src/policy.mjs"),
         (name = "src/moderation.mjs", esModule = embed "../../src/moderation.mjs"),
         (name = "src/setup.mjs", esModule = embed "../../src/setup.mjs"),
+        (name = "src/scheduled_verification.mjs", esModule = embed "../../src/scheduled_verification.mjs"),
         (name = "src/diagnostics.mjs", esModule = embed "../../src/diagnostics.mjs")
       ]
     )),

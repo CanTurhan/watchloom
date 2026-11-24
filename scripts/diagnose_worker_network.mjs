@@ -10,10 +10,24 @@ import {PROJECT, POLICY, RELEASE} from '../server/community-worker/src/policy.mj
 import {limitedText} from '../server/community-worker/src/google.mjs';
 const require = createRequire(import.meta.url);
 const {endpoint} = require('./configure_community_automation.cjs');
-const {safeNetworkCode, publicNetworkDetails, networkEnvironment} = require('./community_diagnostics.cjs');
+const {safeNetworkCode, publicNetworkDetails, networkEnvironment, hostnameTlsDiagnosis} = require('./community_diagnostics.cjs');
 const execute = promisify(execFile);
 const emit = value => process.stdout.write(JSON.stringify(value) + '\n');
 const results = [];
+function sameAddressTls(servername, address) {
+  return new Promise((resolve, reject) => {
+    // A public, unauthenticated certificate handshake only. Validate against
+    // each expected hostname, never the IP; do not change system DNS or trust.
+    const socket = connect({host: address, port: 443, servername, rejectUnauthorized: true}, () => {
+      const protocol = socket.getProtocol(); socket.destroy();
+      resolve({status: 'passed', protocol});
+    });
+    socket.setTimeout(8000, () => {
+      const error = new Error(); error.code = 'ETIMEDOUT'; socket.destroy(error);
+    });
+    socket.once('error', reject);
+  });
+}
 const validBody = text => {
   let body; try {body = JSON.parse(text);} catch {}
   return body?.project === PROJECT && body?.policyVersion === POLICY && body?.release === RELEASE;
@@ -50,12 +64,22 @@ try {
   const environment = networkEnvironment();
   emit({stage: 'network_environment', nodeVersion: process.version, opensslVersion: process.versions.openssl, ...environment});
   if (!environment.certificateValidationEnabled) throw new Error('Restore certificate validation before network checks');
+  let comparisonAddress;
   const dnsReady = await probe('worker_dns', async () => {
     const addresses = await lookup(host, {all: true});
+    comparisonAddress = addresses.find(row => row.family === 4)?.address;
     return {status: 'passed', families: [...new Set(addresses.map(a => a.family))]};
   });
   if (!dnsReady) process.exitCode = 1;
   else {
+    if (comparisonAddress) {
+      await Promise.all([
+        probe('tls_worker_same_address', () => sameAddressTls(host, comparisonAddress)),
+        probe('tls_workers_domain_same_address', () => sameAddressTls('workers.dev', comparisonAddress)),
+        probe('tls_control_same_address', () => sameAddressTls('developers.cloudflare.com', comparisonAddress)),
+      ]);
+      emit({stage: 'tls_route_comparison', result: hostnameTlsDiagnosis(results), applicationCredentialsUsed: false});
+    }
     await probe('worker_tls', async () => {
       const protocol = await new Promise((resolve, reject) => {
         const socket = connect({host, port: 443, servername: host, rejectUnauthorized: true}, () => {

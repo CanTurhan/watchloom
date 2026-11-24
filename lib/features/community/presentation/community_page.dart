@@ -99,6 +99,8 @@ class _CommunityPageState extends State<CommunityPage> {
   String? _viewerUid;
   bool _verified = false;
   bool _disposed = false;
+  StreamSubscription<void>? _moderationUpdates;
+  CommunityRepository? _updatesRepository;
 
   String? get _liveUid =>
       widget.auth == null ? widget.viewerUid : widget.auth!.user?.uid;
@@ -152,6 +154,7 @@ class _CommunityPageState extends State<CommunityPage> {
     _loadTicket++;
     widget.auth?.removeListener(_authChanged);
     _voteCooldown?.cancel();
+    _stopModerationUpdates();
     _sessionRevision.dispose();
     super.dispose();
   }
@@ -179,6 +182,48 @@ class _CommunityPageState extends State<CommunityPage> {
 
   void _authChanged() => _refreshSession();
 
+  void _stopModerationUpdates() {
+    final subscription = _moderationUpdates;
+    _moderationUpdates = null;
+    _updatesRepository = null;
+    if (subscription != null) {
+      unawaited(subscription.cancel().catchError((Object _) {}));
+    }
+  }
+
+  void _bindModerationUpdates() {
+    final repository = _repository;
+    if (!_canParticipate || repository is! CommunityModerationUpdates) {
+      _stopModerationUpdates();
+      return;
+    }
+    if (identical(_updatesRepository, repository)) return;
+    final updates = repository as CommunityModerationUpdates;
+    _stopModerationUpdates();
+    _updatesRepository = repository;
+    final revision = _sessionRevision.value;
+    _moderationUpdates = updates
+        .moderationUpdates(contentKey: widget.contentKey)
+        .listen(
+          (_) {
+            if (_currentSession(revision) &&
+                identical(_repository, repository)) {
+              unawaited(_load());
+            }
+          },
+          onError: (Object _) {
+            if (_currentSession(revision)) {
+              _stopModerationUpdates();
+              // No provider messages, identity or content in diagnostics. Manual
+              // refresh remains available after a listener/network failure.
+              debugPrint(
+                'community operation=moderationUpdates code=refresh-unavailable',
+              );
+            }
+          },
+        );
+  }
+
   void _refreshSession({
     bool force = false,
     bool suppliedBinding = false,
@@ -188,6 +233,7 @@ class _CommunityPageState extends State<CommunityPage> {
     if (_disposed) return;
     final uid = _liveUid, verified = _liveVerified;
     if (!force && uid == _viewerUid && verified == _verified) return;
+    _stopModerationUpdates();
     _loadTicket++;
     _viewerUid = uid;
     _verified = verified;
@@ -294,6 +340,7 @@ class _CommunityPageState extends State<CommunityPage> {
     } finally {
       if (_currentSession(revision) && ticket == _loadTicket) {
         setState(() => _loading = false);
+        if (_error == null) _bindModerationUpdates();
       }
     }
   }
@@ -912,7 +959,7 @@ class _CommunityPageState extends State<CommunityPage> {
               Text(
                 comment.status == CommunityCommentStatus.pending
                     ? s.pending
-                    : s.rejected,
+                    : s.rejection(comment.moderationReason),
                 key: ValueKey('community-status-${comment.id}'),
                 style: const TextStyle(
                   color: AppColors.accentSoft,

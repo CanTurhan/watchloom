@@ -40,14 +40,46 @@ class StorageTests(unittest.TestCase):
         for column in ['media_type', 'runtime_minutes', 'trailer_url', 'content_rating']:
             library_sql = re.sub(r'^\s*' + column + r'[^\n]*\n', '', library_sql, flags=re.M)
         db.execute(library_sql)
+        # Existing CREATE IF NOT EXISTS does not replace the old library table.
+        # Include the actual activity schema and dirty-state triggers too.
+        schema(db)
         save_show(db, 42, 'Özel not 🎬')
+        db.execute("INSERT INTO episode_watch_logs(show_id,show_name,episode_id,season,episode_number,watched_at) VALUES(42,'Show',4201,2,3,'2026-11-05')")
+        db.execute("INSERT INTO unlocked_achievements VALUES('first_episode','2026-11-05')")
+        db.execute('UPDATE backup_state SET saved_version=local_version, remote_revision=7')
+        backup_before = db.execute('SELECT * FROM backup_state').fetchone()
         migrations = re.findall(r"database\.execute\(\s*['\"](ALTER TABLE library_entries ADD COLUMN [^\n]+?)['\"],?\s*\)", SOURCE)
         self.assertEqual(len(migrations), 4)
         for migration in migrations:
             db.execute(migration)
         self.assertEqual(db.execute('SELECT show_id,personal_note,is_favorite,media_type FROM library_entries').fetchone(), (42, 'Özel not 🎬', 1, 'series'))
+        self.assertEqual(db.execute('SELECT show_id,season,episode_number FROM episode_watch_logs').fetchone(), (42, 2, 3))
+        self.assertEqual(db.execute('SELECT code FROM unlocked_achievements').fetchone()[0], 'first_episode')
+        self.assertEqual(db.execute('SELECT * FROM backup_state').fetchone(), backup_before)
         db.execute("INSERT INTO library_entries(show_id,name,status,added_at,updated_at,media_type,runtime_minutes) VALUES(1000001375666,'Inception','completed','2026-11-12','2026-11-12','movie',148)")
         self.assertEqual(db.execute('SELECT COUNT(*) FROM library_entries').fetchone()[0], 2)
+        self.assertEqual(db.execute('SELECT local_version FROM backup_state').fetchone()[0], backup_before[1] + 1)
+
+    def test_existing_v6_file_reopens_with_series_movies_and_account_metadata(self):
+        # A binary-only update keeps the same file and schema version. Reopen a
+        # real SQLite file rather than replacing it with an empty schema.
+        with tempfile.TemporaryDirectory() as directory:
+            filename = Path(directory) / 'watchloom.db'
+            with sqlite3.connect(filename) as db:
+                schema(db)
+                db.execute('PRAGMA user_version = 6')
+                save_show(db, 42, 'Dizi notu 🎬')
+                db.execute("INSERT INTO library_entries(show_id,name,status,personal_note,is_favorite,added_at,updated_at,media_type,runtime_minutes) VALUES(1000001375666,'Inception','completed','Film notu',1,'2026-11-12','2026-11-12','movie',148)")
+                db.execute("INSERT INTO episode_watch_logs(show_id,show_name,episode_id,season,episode_number,watched_at) VALUES(42,'Show',4201,2,3,'2026-11-05')")
+                db.execute("INSERT INTO unlocked_achievements VALUES('first_episode','2026-11-05')")
+                db.execute('UPDATE backup_state SET saved_version=local_version, remote_revision=9')
+                expected = {table: db.execute(f'SELECT * FROM {table}').fetchall() for table in ['library_entries', 'episode_watch_logs', 'unlocked_achievements', 'backup_state']}
+            db.close()
+            with sqlite3.connect(filename) as reopened:
+                self.assertEqual(reopened.execute('PRAGMA user_version').fetchone()[0], 6)
+                for table, rows in expected.items():
+                    self.assertEqual(reopened.execute(f'SELECT * FROM {table}').fetchall(), rows)
+            reopened.close()
 
     def test_v4_upgrade_preserves_legacy_library_and_notes(self):
         db = sqlite3.connect(':memory:')

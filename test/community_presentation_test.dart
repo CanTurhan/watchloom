@@ -8,6 +8,7 @@ import 'package:watchloom/features/activity/presentation/widgets/monthly_activit
 import 'package:watchloom/features/community/domain/community_models.dart';
 import 'package:watchloom/features/community/presentation/community_page.dart';
 import 'package:watchloom/features/community/presentation/community_profile_page.dart';
+import 'package:watchloom/features/community/presentation/community_strings.dart';
 import 'package:watchloom/features/settings/presentation/pages/license_notices_page.dart';
 import 'helpers/fake_community_repository.dart';
 
@@ -58,6 +59,47 @@ void main() {
   }
 
   for (final language in ['en', 'tr']) {
+    testWidgets(
+      'own rejected comment shows actionable moderation feedback ($language)',
+      (tester) async {
+        final repository = FakeCommunityRepository();
+        repository.pending = [
+          const CommunityComment(
+            id: '12345678901234567890',
+            contentKey: 'tvmaze:show:123',
+            contentKind: CommunityContentKind.series,
+            authorUid: 'owner',
+            authorName: '@viewer',
+            body: 'Submitted text',
+            status: CommunityCommentStatus.rejected,
+            moderationReason: 'abuse',
+            createdAt: null,
+          ),
+        ];
+        await harness(
+          tester,
+          CommunityPage(
+            contentKey: 'tvmaze:show:123',
+            seriesName: 'Friends',
+            repository: repository,
+            viewerUid: 'owner',
+            verified: true,
+          ),
+          language: language,
+          scale: 1,
+        );
+        final feedback = find.byKey(
+          const ValueKey('community-status-12345678901234567890'),
+        );
+        await scrollTo(tester, feedback);
+        expect(
+          tester.widget<Text>(feedback).data,
+          CommunityStrings.forLanguage(language).rejection('abuse'),
+        );
+        expect(tester.takeException(), isNull);
+      },
+    );
+
     testWidgets(
       'own comment edit is prefilled and preserves original viewing snapshot and votes ($language)',
       (tester) async {

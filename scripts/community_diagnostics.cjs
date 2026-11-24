@@ -28,7 +28,7 @@ function safeNetworkCode(error) {
     'UNABLE_TO_GET_ISSUER_CERT_LOCALLY', 'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
     'ERR_TLS_CERT_ALTNAME_INVALID', 'ERR_TLS_HANDSHAKE_TIMEOUT',
     'ERR_SSL_SSLV3_ALERT_HANDSHAKE_FAILURE', 'ERR_SSL_TLSV1_ALERT_INTERNAL_ERROR',
-    'ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION', 'ERR_SSL_TLSV1_UNRECOGNIZED_NAME',
+    'ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION', 'ERR_SSL_TLSV1_UNRECOGNIZED_NAME', 'ERR_SSL_WRONG_VERSION_NUMBER',
     'CURL_5', 'CURL_6', 'CURL_7', 'CURL_28', 'CURL_35', 'CURL_56', 'CURL_60', 'CURL_63', 'CURL_77', 'CURL_92', 'CURL_ERROR',
     'AbortError', 'TimeoutError']);
   const queue = [error];
@@ -65,4 +65,12 @@ function networkEnvironment(env = process.env, argv = process.execArgv) {
     customCaConfigured: !!env.NODE_EXTRA_CA_CERTS || !!env.SSL_CERT_FILE || !!env.SSL_CERT_DIR,
   };
 }
-module.exports = {safeProviderCode, safeNetworkCode, publicNetworkDetails, networkEnvironment};
+function hostnameTlsDiagnosis(results) {
+  const status = stage => results.find(row => row.stage === stage)?.status;
+  if (status('tls_control_same_address') !== 'passed') return 'tls_route_comparison_inconclusive';
+  if (status('tls_worker_same_address') === 'passed') return 'worker_tls_same_address_verified';
+  if (status('tls_worker_same_address') !== 'failed') return 'tls_route_comparison_inconclusive';
+  return status('tls_workers_domain_same_address') === 'failed'
+    ? 'workers_domain_tls_route_failure' : 'worker_hostname_tls_route_failure';
+}
+module.exports = {safeProviderCode, safeNetworkCode, publicNetworkDetails, networkEnvironment, hostnameTlsDiagnosis};

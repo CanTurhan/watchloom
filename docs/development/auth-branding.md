@@ -64,7 +64,7 @@ this session; its current draft/published name and review status are unverified.
 
 ## Firebase Authentication → Templates
 
-Live read-only checks confirmed:
+Initial read-only checks confirmed:
 
 - Firebase project display name is already `Watchloom`.
 - Email/password, Google and Apple providers are enabled.
@@ -89,6 +89,48 @@ normal app flows with an owner-controlled account to check a new Google consent
 notification, verification email and password-reset email; never post action
 links or credentials in logs or public issues. No new iOS build is required for
 these server-side branding settings.
+
+### Applied follow-up — 2026-11-18
+
+The owner explicitly authorized the email branding update. Firebase Console
+General settings showed both project name and **Public-facing name** already
+set to `Watchloom`. The three email sender display names were still defaults.
+
+`node scripts/configure_auth_email_branding.cjs --apply` updated only
+`notification.sendEmail.{verifyEmailTemplate,resetPasswordTemplate,changeEmailTemplate}.senderDisplayName`
+to `Watchloom`, using an explicit field mask. A subsequent GET verified all
+three sender names and compared the rest of Auth configuration in memory.
+Templates retain `%APP_NAME%` and `%LINK%`; message bodies, localized subjects,
+action URL, SMTP, sender address, authorized domains and sign-in settings were
+preserved. No message was sent and no account/user data was modified.
+
+Run `node scripts/configure_auth_email_branding.cjs --check` for a read-only
+check. The command is restricted to `watchloom-canturhan` and prints no token,
+SMTP config, recipient or action link. `--apply` is idempotent.
+
+A newly delivered verification/reset email still needs checking from an
+owner-controlled device/account to confirm the resolved app name and inbox
+appearance. This is separate from Google's own OAuth security notification,
+which uses the published OAuth brand and its verification status.
+
+### Owner-requested delivery test — 2026-11-18
+
+The owner explicitly requested a test email to their designated address.
+A `VERIFY_EMAIL` request using administrative authorization without a user
+ID token was rejected with `INVALID_ID_TOKEN`; no verification email was
+confirmed sent. No custom-token sign-in or account verification reset was used.
+
+One `PASSWORD_RESET` email request was then accepted by Firebase, using the
+same `%APP_NAME%` branding and the updated `Watchloom` sender name, with Turkish
+locale requested. A reset email does not change the password unless its reset
+flow is completed. The account, providers, verification state and library data
+were not modified. No response/action link or credential was logged or saved.
+Inbox arrival and the rendered brand text await the owner's confirmation;
+this is not a successful verification-template delivery test.
+
+The owner subsequently confirmed that the received test email displays
+`Watchloom`. This verifies the branding in the delivered reset email; it does
+not change the separate verification-template/session test requirement.
 
 ## Official references
 

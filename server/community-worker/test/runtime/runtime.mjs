@@ -1,4 +1,5 @@
 import worker from './src/index.mjs';
+import {field} from './src/google.mjs';
 const json = (data, status = 200) => new Response(JSON.stringify(data), {status, headers: {'Content-Type': 'application/json'}});
 const check = (condition, label) => {if (!condition) throw new Error('Runtime assertion failed: ' + label);};
 const secretDetail = 'synthetic-provider-detail-must-not-escape';
@@ -72,6 +73,57 @@ async function scenario(failure, expectedCode, context) {
   } else check(response.status === 200 && result.ready === true && proofWritten, 'complete success proof');
   console.log(JSON.stringify({runtimeCase: failure || 'successful_setup', status: 'passed'}));
 }
+async function scheduledScenario() {
+  const env = await environment(true);
+  const prefix = 'projects/watchloom-canturhan/databases/(default)/documents/';
+  const endpoint = 'https://watchloom-community.watchloom-canturhan.workers.dev/';
+  const docs = new Map([
+    ['communityAutomation/verificationRequest', {requestId: 'a'.repeat(32), state: 'pending', endpoint,
+      requestedAt: new Date(), policyVersion: '2026-11-06-auto-v1', release: 'automatic-community-v1'}],
+    ['communityConfig/current', {enabled: true, moderationReady: true, rulesVersion: 2,
+      moderationMode: 'automatic', acceptedPolicyVersion: '2026-11-06-auto-v1', moderationEndpoint: endpoint}],
+  ].map(([path, data]) => [prefix + path, {name: prefix + path,
+    fields: Object.fromEntries(Object.entries(data).map(([key, value]) => [key, field(value)]))}]));
+  let classifications = 0;
+  globalThis.fetch = async (target, options) => {
+    const outgoing = new Request(target, options), url = new URL(outgoing.url);
+    check(outgoing.redirect === 'manual', 'scheduled redirects are not followed');
+    if (url.hostname === 'oauth2.googleapis.com') return json({access_token: 'synthetic-scheduled-token', expires_in: 3600});
+    if (url.hostname === 'identitytoolkit.googleapis.com') return json({});
+    if (url.hostname === 'api.openai.com') {
+      classifications++;
+      const categories = {hate: false, harassment: false, sexual: false, violence: false, 'self-harm': false};
+      const result = {flagged: false, categories, category_scores: Object.fromEntries(Object.keys(categories).map(k => [k, 0.001]))};
+      return json({model: 'synthetic-scheduled-model', results: [result, result]});
+    }
+    check(url.hostname === 'firestore.googleapis.com', 'scheduled checks use only approved provider hosts');
+    if (outgoing.method === 'GET') {
+      const name = decodeURIComponent(url.pathname.slice('/v1/'.length));
+      return docs.has(name) ? json(docs.get(name)) : json({error: {status: 'NOT_FOUND'}}, 404);
+    }
+    if (url.pathname.endsWith(':beginTransaction')) return json({transaction: 'scheduled-transaction'});
+    if (url.pathname.endsWith(':rollback')) return json({});
+    if (url.pathname.endsWith(':runQuery')) return json([]);
+    if (url.pathname.endsWith(':commit')) {
+      const body = await outgoing.json();
+      for (const write of body.writes) {
+        check(write.update.name.startsWith(prefix + 'communityAutomation/'), 'synthetic check does not mutate user data');
+        const previous = write.updateMask ? docs.get(write.update.name)?.fields : {};
+        docs.set(write.update.name, {name: write.update.name, fields: {...previous, ...write.update.fields}});
+      }
+      return json({});
+    }
+    throw new Error('Unexpected scheduled provider operation');
+  };
+  let completion;
+  await worker.scheduled({}, env, {waitUntil(value) {completion = value;}});
+  await completion;
+  const proof = docs.get(prefix + 'communityAutomation/queueVerification')?.fields;
+  check(proof?.ready?.booleanValue === true && proof.queueProtocol.integerValue === '1'
+    && proof.requestId.stringValue === 'a'.repeat(32), 'live-runtime scheduled nonce-bound proof');
+  check(docs.has(prefix + 'communityAutomation/health') && classifications === 1, 'all scheduled provider checks ran');
+  console.log(JSON.stringify({runtimeCase: 'scheduled_operator_verification', status: 'passed'}));
+}
 export default {
   async test(controller, bindings, context) {
     const original = globalThis.fetch;
@@ -83,6 +135,7 @@ export default {
         ['oauth_redirect', 'UPSTREAM_HTTP_ERROR'], ['firestore_redirect', 'UPSTREAM_HTTP_ERROR'], ['openai_redirect', 'UPSTREAM_HTTP_ERROR']]) {
         await scenario(failure, code, context);
       }
+      await scheduledScenario();
     } finally {globalThis.fetch = original;}
   }
 };

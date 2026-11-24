@@ -1,8 +1,56 @@
 import 'dart:async';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watchloom/features/community/domain/community_submission.dart';
+import 'package:watchloom/features/community/domain/community_models.dart';
 
 void main() {
+  test(
+    'denied cooldown and daily caps are explained without granting a write',
+    () {
+      final now = DateTime.utc(2026, 11, 18, 12);
+      CommunityFailure failure(
+        DateTime last,
+        DateTime window,
+        int count, {
+        DateTime? clock,
+      }) => CommunitySubmission.deniedFailure(
+        lastAt: last,
+        windowAt: window,
+        count: count,
+        now: clock ?? now,
+        cooldown: const Duration(seconds: 30),
+        maximum: 20,
+      );
+      expect(
+        failure(now.subtract(const Duration(seconds: 10)), now, 1),
+        CommunityFailure.rateLimited,
+      );
+      expect(
+        failure(now.subtract(const Duration(minutes: 1)), now, 20),
+        CommunityFailure.rateLimited,
+      );
+      expect(
+        failure(now.subtract(const Duration(seconds: 30)), now, 1),
+        CommunityFailure.permissionDenied,
+      );
+      expect(
+        failure(
+          now.subtract(const Duration(days: 1)),
+          now.subtract(const Duration(days: 1)),
+          20,
+        ),
+        CommunityFailure.permissionDenied,
+      );
+      expect(
+        failure(now, now, 20, clock: DateTime.utc(2000)),
+        CommunityFailure.permissionDenied,
+      );
+      expect(
+        failure(now, now, 20, clock: DateTime.utc(2100)),
+        CommunityFailure.permissionDenied,
+      );
+    },
+  );
   testWidgets(
     'saved comment returns even when moderation wake-up never finishes',
     (tester) async {
@@ -16,6 +64,9 @@ void main() {
           return gate.future;
         },
       );
+      // The durable save completes before any timer/network result is awaited.
+      expect(await pending, 'already-saved');
+      expect(gate.isCompleted, false);
       await tester.pump(const Duration(seconds: 16));
       expect(await pending, 'already-saved');
       expect(calls, 1);

@@ -98,9 +98,24 @@ class CommunityStrings {
     'Otomatik kontrol bekliyor · henüz herkese açık değil',
   );
   String get rejected => text(
-    'Not published after safety checks',
-    'Güvenlik kontrolü sonrasında yayımlanmadı',
+    'Your comment could not be published after community safety checks. Please revise it to follow the guidelines and try again.',
+    'Yorumun topluluk güvenlik kontrolünden geçemediği için yayımlanmadı. Lütfen topluluk kurallarına uygun şekilde düzenleyip tekrar gönder.',
   );
+  String rejection(String? reason) => switch (reason) {
+    'abuse' || 'hate' || 'sexual' || 'violence' || 'selfHarm' => text(
+      'Your comment does not meet our language and safety guidelines. Please use respectful, appropriate language and submit it again.',
+      'Yorumun dil ve güvenlik kurallarımıza uygun olmadığı için yayımlanmadı. Lütfen saygılı ve uygun bir dille düzenleyip tekrar gönder.',
+    ),
+    'personalInformation' => text(
+      'Your comment could not be published because it contains contact details or links. Please remove them and submit it again.',
+      'Yorumun iletişim bilgisi veya bağlantı içerdiği için yayımlanmadı. Lütfen bu bilgileri kaldırıp tekrar gönder.',
+    ),
+    'accountUnavailable' => text(
+      'Your comment could not be published because your account or community consent could not be verified. Refresh and check Community identity before trying again.',
+      'Hesabın veya topluluk onayın doğrulanamadığı için yorumun yayımlanmadı. Yenileyip topluluk kimliğini kontrol ettikten sonra tekrar dene.',
+    ),
+    _ => rejected,
+  };
   String get sent => text(
     'Comment saved for automatic safety checks.',
     'Yorumun otomatik güvenlik kontrolü için kaydedildi.',

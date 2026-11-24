@@ -7,6 +7,7 @@ const crypto = require('node:crypto');
 const {check} = require('./check_firebase_spark.cjs');
 const {privateOptions, document, update} = require('./community_moderation.cjs');
 const {endpoint, verifyWorkerSetup, workerFailureDetails} = require('./community_worker_client.cjs');
+const {verifyQueueSetup} = require('./community_queue_verification.cjs');
 const PROJECT = 'watchloom-canturhan';
 const POLICY = '2026-11-06-auto-v1';
 const SECRET = path.join(os.homedir(), '.config/watchloom/community/worker-secrets.json');
@@ -171,7 +172,21 @@ async function run(args) {
   const sourceHash = crypto.createHash('sha256').update(fs.readFileSync(path.join(__dirname, '../firebase/firestore.rules'))).digest('hex');
   if (migration?.data.policyVersion !== POLICY || migration.data.rulesSha256 !== sourceHash) throw new Error('Run the verified migration before enabling automatic publication.');
   phase = 'live Worker, provider, IAM and index verification';
-  const verified = await verifyWorkerSetup(url, secrets.SETUP_TOKEN);
+  let verified;
+  try { verified = await verifyWorkerSetup(url, secrets.SETUP_TOKEN); }
+  catch (error) {
+    // An operator's network can block workers.dev while the scheduled Worker
+    // still reaches Firebase/OpenAI. Verify that SAME deployed Worker through
+    // an admin-only nonce-bound queue request; never bypass certificates or
+    // accept a local simulation as live readiness. HTTP/provider/auth failures
+    // remain failures, with no fallback that could hide bad credentials.
+    if (command !== 'verify' || !new Set(['EPROTO', 'ERR_SSL_WRONG_VERSION_NUMBER',
+      'ERR_SSL_TLSV1_ALERT_PROTOCOL_VERSION', 'ECONNRESET', 'ETIMEDOUT', 'WORKER_TIMEOUT',
+      'ENOTFOUND', 'EAI_AGAIN', 'UND_ERR_CONNECT_TIMEOUT']).has(error.code)) throw error;
+    phase = 'live scheduled queue/provider verification';
+    console.log('Public Worker HTTPS unavailable on this network; requesting an admin-only live scheduled verification.');
+    verified = await verifyQueueSetup(db, url);
+  }
   if (verified.ready !== true || verified.project !== PROJECT || verified.policyVersion !== POLICY
     || verified.release !== 'automatic-community-v1') throw new Error('Worker identity/policy mismatch. Nothing enabled.');
   const health = document((await db.get(`${DB}/communityAutomation/health`, privateOptions())).body);
@@ -179,7 +194,7 @@ async function run(args) {
   if (command === 'verify') {
     const current = document((await db.get(`${DB}/communityConfig/current`, privateOptions())).body)?.data;
     if (!automaticConfiguration(current, url)) throw new Error('Community configuration changed during verification.');
-    console.log('Automatic community, current migration, live provider/IAM/indexes and health verified. Configuration was not enabled or changed by this release check.');
+    console.log(`Automatic community, current migration, live provider/IAM/indexes and health verified (${verified.transport || 'public-https'}). Configuration was not enabled or changed by this release check.`);
     return;
   }
   phase = 'automatic moderation activation and read-back';
